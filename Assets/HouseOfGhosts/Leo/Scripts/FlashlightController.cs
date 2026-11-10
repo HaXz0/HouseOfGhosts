@@ -235,8 +235,11 @@ public sealed class FlashlightController : MonoBehaviour
             var usage = interactor.handedness == UnityEngine.XR.Interaction.Toolkit.Interactors.InteractorHandedness.Left
                 ? CommonUsages.LeftHand
                 : CommonUsages.RightHand;
-            if (device.usages.Contains(usage))
-                return true;
+            foreach (var deviceUsage in device.usages)
+            {
+                if (deviceUsage == usage)
+                    return true;
+            }
         }
 
         return false;
