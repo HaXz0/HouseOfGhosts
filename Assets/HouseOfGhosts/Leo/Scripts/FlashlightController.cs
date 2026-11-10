@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Inputs.Haptics;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
@@ -16,13 +17,31 @@ public sealed class FlashlightController : MonoBehaviour
     [SerializeField] Vector3 beamLocalEulerAngles;
     [SerializeField] float colliderPadding = 0.015f;
 
+    [Header("UV Mode")]
+    [SerializeField] Color normalColor = new Color(1f, 0.95f, 0.82f);
+    [SerializeField] Color uvColor = new Color(0.55f, 0.2f, 1f);
+    [SerializeField] float uvIntensity = 3f;
+    [SerializeField] Vector3 switchNormalEulerAngles = new Vector3(-20f, 0f, 0f);
+    [SerializeField] Vector3 switchUvEulerAngles = Vector3.zero;
+
     XRGrabInteractable m_Interactable;
     Light m_Beam;
+    Transform m_Switch;
+    InputAction m_ModeAction;
+    bool m_IsUvMode;
+
+    public bool IsOn => m_Beam != null && m_Beam.enabled;
+    public bool IsUvMode => m_IsUvMode;
+    public bool IsUvActive => IsOn && m_IsUvMode;
+
+    public event Action<bool> UvModeChanged;
 
     void Awake()
     {
         SetUpGrab();
         SetUpBeam();
+        SetUpModeSwitch();
+        ApplyMode();
     }
 
     void OnEnable()
@@ -31,6 +50,8 @@ public sealed class FlashlightController : MonoBehaviour
         {
             m_Interactable.activated.AddListener(ToggleBeam);
             m_Interactable.selectEntered.AddListener(PlayPickupHaptic);
+            m_Interactable.selectEntered.AddListener(EnableModeInput);
+            m_Interactable.selectExited.AddListener(DisableModeInput);
         }
     }
 
@@ -40,7 +61,16 @@ public sealed class FlashlightController : MonoBehaviour
         {
             m_Interactable.activated.RemoveListener(ToggleBeam);
             m_Interactable.selectEntered.RemoveListener(PlayPickupHaptic);
+            m_Interactable.selectEntered.RemoveListener(EnableModeInput);
+            m_Interactable.selectExited.RemoveListener(DisableModeInput);
         }
+
+        m_ModeAction?.Disable();
+    }
+
+    void OnDestroy()
+    {
+        m_ModeAction?.Dispose();
     }
 
     void SetUpGrab()
@@ -161,5 +191,76 @@ public sealed class FlashlightController : MonoBehaviour
     {
         if (m_Beam != null)
             m_Beam.enabled = !m_Beam.enabled;
+    }
+
+    void SetUpModeSwitch()
+    {
+        foreach (var child in GetComponentsInChildren<Transform>(true))
+        {
+            if (string.Equals(child.name, "Switch", StringComparison.OrdinalIgnoreCase))
+            {
+                m_Switch = child;
+                break;
+            }
+        }
+
+        if (m_Switch == null)
+            Debug.LogWarning("Flashlight has no 'Switch' child to rotate for UV mode.", this);
+
+        // Quest face button: A on the right controller, X on the left.
+        m_ModeAction = new InputAction("Flashlight Mode", InputActionType.Button);
+        m_ModeAction.AddBinding("<XRController>{LeftHand}/primaryButton");
+        m_ModeAction.AddBinding("<XRController>{RightHand}/primaryButton");
+        m_ModeAction.performed += OnModePressed;
+    }
+
+    void EnableModeInput(SelectEnterEventArgs args) => m_ModeAction?.Enable();
+
+    void DisableModeInput(SelectExitEventArgs args)
+    {
+        if (!m_Interactable.isSelected)
+            m_ModeAction?.Disable();
+    }
+
+    void OnModePressed(InputAction.CallbackContext context)
+    {
+        if (IsPressedByHoldingHand(context.control.device))
+            SetUvMode(!m_IsUvMode);
+    }
+
+    bool IsPressedByHoldingHand(InputDevice device)
+    {
+        foreach (var interactor in m_Interactable.interactorsSelecting)
+        {
+            var usage = interactor.handedness == UnityEngine.XR.Interaction.Toolkit.Interactors.InteractorHandedness.Left
+                ? CommonUsages.LeftHand
+                : CommonUsages.RightHand;
+            if (device.usages.Contains(usage))
+                return true;
+        }
+
+        return false;
+    }
+
+    public void SetUvMode(bool uvMode)
+    {
+        if (m_IsUvMode == uvMode)
+            return;
+
+        m_IsUvMode = uvMode;
+        ApplyMode();
+        UvModeChanged?.Invoke(m_IsUvMode);
+    }
+
+    void ApplyMode()
+    {
+        if (m_Beam != null)
+        {
+            m_Beam.color = m_IsUvMode ? uvColor : normalColor;
+            m_Beam.intensity = m_IsUvMode ? uvIntensity : beamIntensity;
+        }
+
+        if (m_Switch != null)
+            m_Switch.localEulerAngles = m_IsUvMode ? switchUvEulerAngles : switchNormalEulerAngles;
     }
 }
