@@ -319,6 +319,11 @@ MonoBehaviour:
   beamLocalPosition: {x: 0, y: 0, z: 0.12}
   beamLocalEulerAngles: {x: 0, y: 0, z: 0}
   colliderPadding: 0.015
+  normalColor: {r: 1, g: 0.95, b: 0.82, a: 1}
+  uvColor: {r: 0.55, g: 0.2, b: 1, a: 1}
+  uvIntensity: 3
+  switchNormalEulerAngles: {x: -20, y: 0, z: 0}
+  switchUvEulerAngles: {x: 0, y: 0, z: 0}
 --- !u!54 &990000004
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -639,11 +644,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6965176780418011476, guid: e6c398c16570e8645b52b8094301d03e, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -0.001009047
+      value: 0.03716
       objectReference: {fileID: 0}
     - target: {fileID: 6965176780418011476, guid: e6c398c16570e8645b52b8094301d03e, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0.032800555
+      value: 0.06483
       objectReference: {fileID: 0}
     - target: {fileID: 6965176780418011476, guid: e6c398c16570e8645b52b8094301d03e, type: 3}
       propertyPath: m_LocalRotation.w
