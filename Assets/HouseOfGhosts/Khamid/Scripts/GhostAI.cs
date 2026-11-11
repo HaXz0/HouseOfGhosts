@@ -78,7 +78,7 @@ public class GhostAI : MonoBehaviour
         }
 
         // Place ghost at first hiding spot at start
-        if (hidingSpots.Count > 0)
+        if (hidingSpots.Count > 0 && m_CurrentSpot == null)
         {
             m_CurrentSpot = hidingSpots[0];
             transform.position = m_CurrentSpot.Position;
@@ -219,6 +219,44 @@ public class GhostAI : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Called by RoundManager to configure difficulty for the new round and respawn the ghost.
+    /// </summary>
+    public void StartNewRound(float newFleeSpeed, float newWatchDuration, float newWatchChance)
+    {
+        if (m_GhostTarget == null)
+        {
+            m_GhostTarget = GetComponent<GhostTarget>();
+        }
+
+        fleeSpeed = newFleeSpeed;
+        watchPlayerDuration = newWatchDuration;
+        watchPlayerChance = Mathf.Clamp01(newWatchChance);
+
+        // Pick a hiding spot for the new round
+        GhostHidingSpot spawnSpot = GetNextHidingSpot();
+        if (spawnSpot != null)
+        {
+            m_CurrentSpot = spawnSpot;
+            m_TargetSpot = null;
+            transform.position = m_CurrentSpot.Position;
+        }
+
+        currentState = GhostState.Hidden;
+
+        // Re-enable the ghost target and reset the 3-second capture timer
+        if (m_GhostTarget != null)
+        {
+            m_GhostTarget.ResetTarget();
+        }
+        else
+        {
+            gameObject.SetActive(true);
+        }
+
+        Debug.Log($"[GhostAI] Respawned at '{(m_CurrentSpot != null ? m_CurrentSpot.SpotName : "Start")}' | Speed: {fleeSpeed:F2} m/s | Stare: {watchPlayerDuration:F1}s ({watchPlayerChance * 100f:F0}% chance)");
+    }
+
     private void StartFleeing()
     {
         m_TargetSpot = GetNextHidingSpot();
@@ -232,15 +270,44 @@ public class GhostAI : MonoBehaviour
 
     private GhostHidingSpot GetNextHidingSpot()
     {
-        if (hidingSpots.Count <= 1)
-            return m_CurrentSpot;
+        if (hidingSpots.Count == 0)
+            return null;
 
-        List<GhostHidingSpot> validSpots = new List<GhostHidingSpot>(hidingSpots);
-        if (m_CurrentSpot != null)
-            validSpots.Remove(m_CurrentSpot);
+        if (hidingSpots.Count == 1)
+            return hidingSpots[0];
 
-        int randomIndex = Random.Range(0, validSpots.Count);
-        return validSpots[randomIndex];
+        List<GhostHidingSpot> validSpots = new List<GhostHidingSpot>();
+        List<GhostHidingSpot> safeDistanceSpots = new List<GhostHidingSpot>();
+
+        foreach (GhostHidingSpot spot in hidingSpots)
+        {
+            if (spot == null || spot == m_CurrentSpot)
+                continue;
+
+            validSpots.Add(spot);
+
+            // Prefer spots that are not right next to the player
+            if (playerHead != null)
+            {
+                float distToPlayer = Vector3.Distance(spot.Position, playerHead.position);
+                if (distToPlayer > triggerProximityDistance + 0.5f)
+                {
+                    safeDistanceSpots.Add(spot);
+                }
+            }
+        }
+
+        if (safeDistanceSpots.Count > 0)
+        {
+            return safeDistanceSpots[Random.Range(0, safeDistanceSpots.Count)];
+        }
+
+        if (validSpots.Count > 0)
+        {
+            return validSpots[Random.Range(0, validSpots.Count)];
+        }
+
+        return m_CurrentSpot;
     }
 
     private void OnCaptured()
