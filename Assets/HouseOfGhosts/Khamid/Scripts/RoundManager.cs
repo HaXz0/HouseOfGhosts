@@ -24,6 +24,18 @@ public class RoundManager : MonoBehaviour
     [Tooltip("How much flee speed increases each round (+0.35 m/s per round).")]
     [SerializeField] private float speedIncreasePerRound = 0.35f;
 
+    [Tooltip("Evasive weave width (meters) in Round 1.")]
+    [SerializeField] private float round1WeaveAmplitude = 0.55f;
+
+    [Tooltip("How much weave width increases each round (+0.08m per round, up to 0.95m in Round 6).")]
+    [SerializeField] private float weaveAmplitudeIncreasePerRound = 0.08f;
+
+    [Tooltip("Evasive weave speed (Hz) in Round 1.")]
+    [SerializeField] private float round1WeaveFrequency = 3.0f;
+
+    [Tooltip("How much weave speed increases each round (+0.3 Hz per round, up to 4.5 Hz in Round 6).")]
+    [SerializeField] private float weaveFrequencyIncreasePerRound = 0.3f;
+
     [Tooltip("Behaviour A stare duration in Round 1 (seconds).")]
     [SerializeField] private float round1WatchDuration = 2.0f;
 
@@ -110,7 +122,6 @@ public class RoundManager : MonoBehaviour
             Debug.LogError("[RoundManager] Could not find GhostTarget in scene!", this);
         }
 
-        // Initialize Round 1
         currentRound = 1;
         capturesCompleted = 0;
         isAtticUnlocked = false;
@@ -143,7 +154,6 @@ public class RoundManager : MonoBehaviour
         Debug.Log($"[RoundManager] === CAPTURE {capturesCompleted} / {totalRounds} COMPLETED! ===");
         onCaptureCountChanged?.Invoke(capturesCompleted, totalRounds);
 
-        // Check for 3rd capture Attic Unlock milestone
         if (!isAtticUnlocked && capturesCompleted >= atticUnlockCaptureCount)
         {
             isAtticUnlocked = true;
@@ -151,7 +161,6 @@ public class RoundManager : MonoBehaviour
             onAtticUnlocked?.Invoke();
         }
 
-        // Check for 6th capture Victory condition
         if (capturesCompleted >= totalRounds)
         {
             isGameWon = true;
@@ -160,7 +169,6 @@ public class RoundManager : MonoBehaviour
             return;
         }
 
-        // Otherwise, wait for respawn delay and start the next round
         if (m_RespawnCoroutine != null)
         {
             StopCoroutine(m_RespawnCoroutine);
@@ -189,6 +197,8 @@ public class RoundManager : MonoBehaviour
             : 1.0f;
 
         float speedForRound = (round1FleeSpeed + (roundOffset * speedIncreasePerRound)) * difficultySpeedMultiplier;
+        float weaveAmpForRound = round1WeaveAmplitude + (roundOffset * weaveAmplitudeIncreasePerRound);
+        float weaveFreqForRound = round1WeaveFrequency + (roundOffset * weaveFrequencyIncreasePerRound);
         float watchDurationForRound = Mathf.Max(minimumWatchDuration, round1WatchDuration - (roundOffset * watchDurationDecreasePerRound));
         float watchChanceForRound = Mathf.Clamp(round1WatchChance - (roundOffset * watchChanceDecreasePerRound), minimumWatchChance, 1f);
 
@@ -196,15 +206,12 @@ public class RoundManager : MonoBehaviour
 
         if (ghostAI != null)
         {
-            ghostAI.StartNewRound(speedForRound, watchDurationForRound, watchChanceForRound);
+            ghostAI.StartNewRound(speedForRound, watchDurationForRound, watchChanceForRound, weaveAmpForRound, weaveFreqForRound);
         }
 
         onRoundStarted?.Invoke(roundNumber);
     }
 
-    /// <summary>
-    /// Called by DangerMeter when the meter reaches 0% to end the game.
-    /// </summary>
     public void StopGameOnLoss()
     {
         if (isGameWon || isGameLost)
