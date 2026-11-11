@@ -18,7 +18,7 @@ public class RoundManager : MonoBehaviour
     [SerializeField] private float respawnDelaySeconds = 3.0f;
 
     [Header("Difficulty Scaling (Rounds 1 to 6)")]
-    [Tooltip("Ghost flee speed in Round 1 (meters/second).")]
+    [Tooltip("Ghost flee speed in Round 1 on Normal difficulty (meters/second).")]
     [SerializeField] private float round1FleeSpeed = 2.8f;
 
     [Tooltip("How much flee speed increases each round (+0.35 m/s per round).")]
@@ -49,6 +49,7 @@ public class RoundManager : MonoBehaviour
     [SerializeField] private int capturesCompleted = 0;
     [SerializeField] private bool isAtticUnlocked = false;
     [SerializeField] private bool isGameWon = false;
+    [SerializeField] private bool isGameLost = false;
 
     [Header("References")]
     [Tooltip("Reference to the GhostAI component. Automatically found if left empty.")]
@@ -77,6 +78,7 @@ public class RoundManager : MonoBehaviour
     public int TotalRounds => totalRounds;
     public bool IsAtticUnlocked => isAtticUnlocked;
     public bool IsGameWon => isGameWon;
+    public bool IsGameLost => isGameLost;
 
     private void Awake()
     {
@@ -113,6 +115,7 @@ public class RoundManager : MonoBehaviour
         capturesCompleted = 0;
         isAtticUnlocked = false;
         isGameWon = false;
+        isGameLost = false;
 
         ApplyRoundSettingsAndSpawn(currentRound);
         onCaptureCountChanged?.Invoke(capturesCompleted, totalRounds);
@@ -133,7 +136,7 @@ public class RoundManager : MonoBehaviour
 
     private void HandleGhostCaptured()
     {
-        if (isGameWon)
+        if (isGameWon || isGameLost)
             return;
 
         capturesCompleted++;
@@ -170,6 +173,9 @@ public class RoundManager : MonoBehaviour
         Debug.Log($"[RoundManager] Next round starting in {respawnDelaySeconds:F1} seconds...");
         yield return new WaitForSeconds(respawnDelaySeconds);
 
+        if (isGameLost)
+            yield break;
+
         currentRound++;
         ApplyRoundSettingsAndSpawn(currentRound);
     }
@@ -178,7 +184,11 @@ public class RoundManager : MonoBehaviour
     {
         int roundOffset = Mathf.Max(0, roundNumber - 1);
 
-        float speedForRound = round1FleeSpeed + (roundOffset * speedIncreasePerRound);
+        float difficultySpeedMultiplier = DangerMeter.Instance != null
+            ? DangerMeter.Instance.GetGhostSpeedMultiplier()
+            : 1.0f;
+
+        float speedForRound = (round1FleeSpeed + (roundOffset * speedIncreasePerRound)) * difficultySpeedMultiplier;
         float watchDurationForRound = Mathf.Max(minimumWatchDuration, round1WatchDuration - (roundOffset * watchDurationDecreasePerRound));
         float watchChanceForRound = Mathf.Clamp(round1WatchChance - (roundOffset * watchChanceDecreasePerRound), minimumWatchChance, 1f);
 
@@ -190,5 +200,29 @@ public class RoundManager : MonoBehaviour
         }
 
         onRoundStarted?.Invoke(roundNumber);
+    }
+
+    /// <summary>
+    /// Called by DangerMeter when the meter reaches 0% to end the game.
+    /// </summary>
+    public void StopGameOnLoss()
+    {
+        if (isGameWon || isGameLost)
+            return;
+
+        isGameLost = true;
+
+        if (m_RespawnCoroutine != null)
+        {
+            StopCoroutine(m_RespawnCoroutine);
+            m_RespawnCoroutine = null;
+        }
+
+        if (ghostAI != null)
+        {
+            ghostAI.gameObject.SetActive(false);
+        }
+
+        Debug.Log("[RoundManager] Match ended in defeat.");
     }
 }
