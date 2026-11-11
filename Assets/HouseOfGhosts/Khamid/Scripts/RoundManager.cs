@@ -279,7 +279,7 @@ public class RoundManager : MonoBehaviour
 
         if (ghostAI != null)
         {
-            ghostAI.StartNewRound(speedForRound, watchDurationForRound, watchChanceForRound, weaveAmpForRound, weaveFreqForRound);
+            ghostAI.StartNewRound(speedForRound, watchDurationForRound, watchChanceForRound, weaveAmpForRound, weaveFreqForRound, roundNumber);
         }
 
         onRoundStarted?.Invoke(roundNumber);

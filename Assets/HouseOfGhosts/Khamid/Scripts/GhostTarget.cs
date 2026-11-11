@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.Rendering;
 
+[DefaultExecutionOrder(0)]
 [DisallowMultipleComponent]
 public class GhostTarget : MonoBehaviour
 {
@@ -146,6 +147,8 @@ public class GhostTarget : MonoBehaviour
     private static readonly int s_DissolveEdgeColorId = Shader.PropertyToID("_DissolveEdgeColor");
     private static readonly int s_RimColorId = Shader.PropertyToID("_RimColor");
     private static readonly int s_RimIntensityId = Shader.PropertyToID("_RimIntensity");
+    private static readonly Color s_UVSpectralAuraColor = new Color(0.54f, 0.16f, 1.0f, 1.0f);
+    private static readonly Color s_UVSpectralRimColor = new Color(0.72f, 0.28f, 1.0f, 1.0f);
 
     public float CurrentProgressNormalized => Mathf.Clamp01(m_CurrentCaptureTime / requiredCaptureDuration);
     public bool IsIlluminated => m_IsIlluminatedThisFrame;
@@ -676,9 +679,16 @@ public class GhostTarget : MonoBehaviour
 
         float progress = CurrentProgressNormalized;
         Color progressColor = Color.Lerp(startIlluminatedColor, nearCaptureColor, progress);
+        bool uvHit = m_IsUVIlluminatedThisFrame;
 
         Color activeRimColor = Color.Lerp(m_CustomRimColor, wallPhaseColor, m_WallPhaseBlend);
         float activeRimIntensity = Mathf.Max(m_CustomRimIntensity, m_WallPhaseBlend * 1.4f);
+
+        if (uvHit)
+        {
+            activeRimColor = s_UVSpectralRimColor;
+            activeRimIntensity = Mathf.Max(activeRimIntensity, 2.25f);
+        }
 
         if (progress > 0.02f)
         {
@@ -694,6 +704,11 @@ public class GhostTarget : MonoBehaviour
                 continue;
 
             Color baseStateColor = Color.Lerp(entry.OriginalColor, wallPhaseColor, m_WallPhaseBlend);
+            if (uvHit)
+            {
+                baseStateColor = Color.Lerp(baseStateColor, s_UVSpectralAuraColor, 0.75f);
+            }
+
             Color finalColor = baseStateColor;
 
             if (showVisualColorFeedback && (illuminated || m_CurrentCaptureTime > 0f))
@@ -720,7 +735,11 @@ public class GhostTarget : MonoBehaviour
             m_PropBlock.SetColor(s_RimColorId, activeRimColor);
             m_PropBlock.SetFloat(s_RimIntensityId, activeRimIntensity);
 
-            if (m_WallPhaseBlend > 0.01f)
+            if (uvHit)
+            {
+                m_PropBlock.SetColor(s_EmissionColorId, s_UVSpectralAuraColor * 0.85f);
+            }
+            else if (m_WallPhaseBlend > 0.01f)
             {
                 m_PropBlock.SetColor(s_EmissionColorId, wallPhaseColor * (m_WallPhaseBlend * 0.55f));
             }

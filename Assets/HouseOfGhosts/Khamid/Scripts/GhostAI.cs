@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+[DefaultExecutionOrder(-20)]
 [RequireComponent(typeof(GhostTarget))]
 [DisallowMultipleComponent]
 public class GhostAI : MonoBehaviour
@@ -14,8 +15,16 @@ public class GhostAI : MonoBehaviour
         Captured
     }
 
+    public enum WallPhaseTierOverride
+    {
+        UseCurrentRound = 0,
+        ForceEarlySplash = 1,
+        ForceLateOutlineAndSpeed = 2
+    }
+
     [Header("Current State (Read Only)")]
     [SerializeField] private GhostState currentState = GhostState.Hidden;
+    [SerializeField] private int activeRoundNumber = 1;
     [SerializeField] private bool isPhasingThroughWall = false;
     [SerializeField] private float currentSpectralVisibility = 0f;
 
@@ -38,9 +47,9 @@ public class GhostAI : MonoBehaviour
     [Range(0.2f, 1.0f)]
     [SerializeField] private float stalkPhantomVisibility = 0.62f;
 
-    [Tooltip("Ghostly UV silhouette visibility (0.38 = 38%) when you shine the UV flashlight onto a cloaked Hidden ghost.")]
+    [Tooltip("Ghostly UV silhouette visibility (0.48 = 48%) when you shine the UV flashlight onto a cloaked Hidden ghost.")]
     [Range(0.15f, 0.85f)]
-    [SerializeField] private float uvCloakShimmerVisibility = 0.38f;
+    [SerializeField] private float uvCloakShimmerVisibility = 0.48f;
 
     [Tooltip("Rim glow color when the UV beam reveals a cloaked ghost.")]
     [SerializeField] private Color uvShimmerRimColor = new Color(0.58f, 0.22f, 1.0f, 1.0f);
@@ -48,8 +57,8 @@ public class GhostAI : MonoBehaviour
     [Tooltip("If true, holding the UV beam on a Hidden ghost for uvDisturbDuration spooks her into Fake Escape.")]
     [SerializeField] private bool disturbWithUVBeam = true;
 
-    [Tooltip("Seconds of continuous UV beam exposure before a Hidden ghost bolts (gives you time to switch to Normal light!).")]
-    [SerializeField] private float uvDisturbDuration = 1.2f;
+    [Tooltip("Seconds of continuous UV beam exposure before a Hidden ghost bolts (gives you time to see her purple UV aura & switch to Normal light!).")]
+    [SerializeField] private float uvDisturbDuration = 2.2f;
 
     [Header("Stage 2: Flashlight Beam-Lock Struggle")]
     [Tooltip("If true, holding the Normal beam on the ghost makes her visibly tremble and drags down her flee speed as capture nears 3s.")]
@@ -162,26 +171,56 @@ public class GhostAI : MonoBehaviour
     [Tooltip("Fluorescent color of standard UV footprints.")]
     [SerializeField] private Color footprintUVColor = new Color(0.15f, 1.0f, 0.78f, 1.0f);
 
-    [Tooltip("If true, passing through a solid wall leaves glowing UV Spectral Rift marks on BOTH sides of the wall!")]
+    [Tooltip("If true, passing through a solid wall leaves glowing UV Splash (Early) or Ghost Outline (Late) marks on BOTH sides of the wall!")]
     [SerializeField] private bool leaveWallPhaseUVMarks = true;
 
-    [Tooltip("Diameter (meters) of the UV Spectral Rift mark left on walls.")]
-    [SerializeField] private float wallMarkSize = 0.55f;
-
-    [Tooltip("Seconds that UV Wall-Phase Rift marks stay discoverable.")]
+    [Tooltip("Seconds that UV Wall Marks (Splash / Ghost Outline) stay discoverable.")]
     [SerializeField] private float wallMarkLifetimeSeconds = 32.0f;
 
-    [Tooltip("Fluorescent cyan-violet color for UV Wall-Phase Rift marks.")]
+    [Tooltip("Fluorescent cyan-violet color for 60s Search Hint UV breadcrumb rings.")]
     [SerializeField] private Color wallMarkUVColor = new Color(0.38f, 0.72f, 1.0f, 1.0f);
 
     [Tooltip("If true, bolting from a hiding spot leaves a pulsing UV Residual Ring at the spot she escaped from.")]
     [SerializeField] private bool leaveEscapeOriginMark = true;
 
     [Tooltip("Number of reusable UV trace objects in the pool (zero runtime garbage collection).")]
-    [SerializeField] private int tracePoolSize = 24;
+    [SerializeField] private int tracePoolSize = 32;
 
     [Tooltip("Material using HouseOfGhosts/UVGhostTrace shader for UV traces.")]
     [SerializeField] private Material uvTraceMaterial;
+
+    [Header("Stage 3B: Round-Based Wall-Phase Tiers (Splash vs. Outline + Speed)")]
+    [Tooltip("Round where Wall-Phasing upgrades from Splash (Scenario 1) to Super-Fast Surge + Ghost Outline (Scenario 2). Default 4 = Rounds 1-3 Splash, Rounds 4-6 Outline + Speed!")]
+    [Range(1, 6)]
+    [SerializeField] private int lateWallPhaseStartRound = 4;
+
+    [Tooltip("Testing shortcut! Leave on UseCurrentRound for normal gameplay, or force Early Splash / Late Outline & Speed in Round 1.")]
+    [SerializeField] private WallPhaseTierOverride wallPhaseTestOverride = WallPhaseTierOverride.UseCurrentRound;
+
+    [Tooltip("Diameter (meters) of the organic UV Ectoplasm Splash left on walls in Early Rounds (1-3).")]
+    [SerializeField] private float earlyWallSplashSize = 0.95f;
+
+    [Tooltip("Fluorescent UV color of the Early-Round Wall Splash (Rounds 1-3).")]
+    [SerializeField] private Color earlyWallSplashUVColor = new Color(0.18f, 0.96f, 0.82f, 1.0f);
+
+    [Tooltip("Super-fast forward speed multiplier WHILE passing through a solid wall in Late Rounds (4-6)!")]
+    [SerializeField] private float lateWallPhaseSpeedMultiplier = 2.35f;
+
+    [Tooltip("Extra post-wall speed boost multiplier right after bursting through a wall in Late Rounds (4-6)!")]
+    [SerializeField] private float lateWallSpeedBoostMultiplier = 1.45f;
+
+    [Tooltip("Seconds that the post-wall speed surge lasts before smoothly settling back to normal round speed.")]
+    [SerializeField] private float lateWallSpeedBoostDuration = 1.6f;
+
+    [Tooltip("Fluorescent UV color of the Late-Round Ghost Silhouette Outline (Rounds 4-6).")]
+    [SerializeField] private Color lateGhostOutlineUVColor = new Color(0.55f, 0.35f, 1.0f, 1.0f);
+
+    [Tooltip("Padding around the ghost's body dimensions so the glowing UV outline aura never clips at the quad border.")]
+    [Range(1.02f, 1.35f)]
+    [SerializeField] private float ghostOutlinePadding = 1.14f;
+
+    [Tooltip("Leave empty right now to render a crisp Capsule Outline! When the 3D Ghost Girl model is finished, drag her 2D silhouette texture (alpha PNG) here to upgrade the wall outline automatically.")]
+    [SerializeField] private Texture2D customGhostSilhouetteTexture;
 
     [Header("Stalking / Creeping Behaviour")]
     [Tooltip("If true, when the player takes too long to find the ghost, she creeps toward the player to drain the Danger Meter.")]
@@ -262,12 +301,19 @@ public class GhostAI : MonoBehaviour
     private float m_JukeSignVelocity = 0f;
     private float m_NoiseSeed = 0f;
 
-    // Wall-phasing & Stage 3 wall-mark state
+    // Wall-phasing & Stage 3B round-based wall-mark state
     private Vector3 m_InitialLocalScale = Vector3.one;
+    private float m_RestingBodyWidth = 1.0f;
+    private float m_RestingBodyHeight = 2.0f;
     private float m_CurrentWallPhaseBlend = 0f;
+    private float m_LateWallSurgeTimer = 0f;
     private bool m_WasPhasingLastFrame = false;
-    private float m_LastWallMarkTime = -10f;
+    private float m_LastWallEntryMarkTime = -10f;
+    private float m_LastWallExitMarkTime = -10f;
+    private Vector3 m_PreviousChestCenter;
+    private Collider m_LastOverlappedWallCollider;
     private readonly Collider[] m_WallOverlapBuffer = new Collider[12];
+    private readonly RaycastHit[] m_WallRayHits = new RaycastHit[16];
 
     // UV Trace Pool state
     private readonly List<GhostTrace> m_TracePool = new List<GhostTrace>();
@@ -282,12 +328,34 @@ public class GhostAI : MonoBehaviour
     public bool IsPhasingThroughWall => isPhasingThroughWall;
     public float CurrentSpectralVisibility => currentSpectralVisibility;
 
+    /// <summary>
+    /// True in Late Rounds (default Rounds 4-6) or when ForceLateOutlineAndSpeed is selected in the Inspector.
+    /// </summary>
+    public bool IsLateWallPhaseTier
+    {
+        get
+        {
+            if (wallPhaseTestOverride == WallPhaseTierOverride.ForceEarlySplash)
+                return false;
+            if (wallPhaseTestOverride == WallPhaseTierOverride.ForceLateOutlineAndSpeed)
+                return true;
+
+            if (RoundManager.Instance != null)
+            {
+                activeRoundNumber = RoundManager.Instance.CurrentRound;
+            }
+            return activeRoundNumber >= lateWallPhaseStartRound;
+        }
+    }
+
     private void Awake()
     {
         m_GhostTarget = GetComponent<GhostTarget>();
         m_BaseYPosition = transform.position.y;
         m_CorePathPosition = transform.position;
         m_InitialLocalScale = transform.localScale;
+        CacheRestingBodyDimensions();
+        m_PreviousChestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
     }
 
     private void Start()
@@ -316,6 +384,7 @@ public class GhostAI : MonoBehaviour
         }
 
         m_LastTraceDropPosition = transform.position;
+        m_PreviousChestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
 
         if (m_GhostTarget == null || !m_GhostTarget.IsTestDummy)
         {
@@ -325,6 +394,25 @@ public class GhostAI : MonoBehaviour
         // Start cloaked if starting in Hidden state
         currentSpectralVisibility = (cloakWhileHidden && currentState == GhostState.Hidden) ? 0f : 1f;
         PushSpectralStateToTarget(currentSpectralVisibility, false, s_PhantomRimColor, 0f);
+    }
+
+    private void CacheRestingBodyDimensions()
+    {
+        CapsuleCollider cap = GetComponent<CapsuleCollider>();
+        if (cap != null)
+        {
+            m_RestingBodyWidth = Mathf.Max(0.4f, cap.radius * 2.0f * Mathf.Abs(m_InitialLocalScale.x));
+            m_RestingBodyHeight = Mathf.Max(0.9f, cap.height * Mathf.Abs(m_InitialLocalScale.y));
+            return;
+        }
+
+        Renderer rend = GetComponentInChildren<Renderer>(true);
+        if (rend != null)
+        {
+            Vector3 localSize = rend.localBounds.size;
+            m_RestingBodyWidth = Mathf.Max(0.4f, localSize.x * Mathf.Abs(m_InitialLocalScale.x));
+            m_RestingBodyHeight = Mathf.Max(0.9f, localSize.y * Mathf.Abs(m_InitialLocalScale.y));
+        }
     }
 
     private void OnDestroy()
@@ -505,14 +593,42 @@ public class GhostAI : MonoBehaviour
         }
     }
 
-    private GhostTrace GetNextPooledTrace()
+    private GhostTrace GetNextPooledTrace(bool isHighPriorityWallMark = false)
     {
-        if (m_TracePool.Count == 0)
+        int count = m_TracePool.Count;
+        if (count == 0)
             return null;
 
-        GhostTrace trace = m_TracePool[m_NextTracePoolIndex];
-        m_NextTracePoolIndex = (m_NextTracePoolIndex + 1) % m_TracePool.Count;
-        return trace;
+        // 1. Prefer an inactive pooled trace first
+        for (int i = 0; i < count; i++)
+        {
+            int idx = (m_NextTracePoolIndex + i) % count;
+            GhostTrace candidate = m_TracePool[idx];
+            if (candidate != null && !candidate.gameObject.activeSelf)
+            {
+                m_NextTracePoolIndex = (idx + 1) % count;
+                return candidate;
+            }
+        }
+
+        // 2. If all traces are active and we are spawning a Footprint/Ring, protect active Wall Splashes & Ghost Outlines!
+        if (!isHighPriorityWallMark)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                int idx = (m_NextTracePoolIndex + i) % count;
+                GhostTrace candidate = m_TracePool[idx];
+                if (candidate != null && !candidate.IsWallMark)
+                {
+                    m_NextTracePoolIndex = (idx + 1) % count;
+                    return candidate;
+                }
+            }
+        }
+
+        GhostTrace fallback = m_TracePool[m_NextTracePoolIndex];
+        m_NextTracePoolIndex = (m_NextTracePoolIndex + 1) % count;
+        return fallback;
     }
 
     private void UpdateTraceTrail(Vector3 movementDirection)
@@ -589,7 +705,9 @@ public class GhostAI : MonoBehaviour
         if (!leaveWallPhaseUVMarks || m_TracePool.Count == 0)
             return;
 
-        if (Time.time - m_LastWallMarkTime < 0.25f)
+        // Independent entry & exit cooldowns so fast Late-Round wall passes (~0.10s) always stamp BOTH sides of a wall!
+        float lastTime = isEnteringWall ? m_LastWallEntryMarkTime : m_LastWallExitMarkTime;
+        if (Time.time - lastTime < 0.15f)
             return;
 
         Vector3 chestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
@@ -600,52 +718,197 @@ public class GhostAI : MonoBehaviour
         else
             travelDir.Normalize();
 
-        // When entering a wall, cast forward from slightly behind; when exiting, cast backward toward the wall we just left!
+        // When entering a wall, cast forward from behind the ghost; when exiting, cast backward from ahead of the ghost!
         Vector3 rayDir = isEnteringWall ? travelDir : -travelDir;
-        Vector3 rayStart = chestCenter - (rayDir * 0.85f);
+        Vector3 rayStart = chestCenter - (rayDir * 1.45f);
 
-        if (Physics.Raycast(rayStart, rayDir, out RaycastHit hit, 1.9f, obstacleLayers, QueryTriggerInteraction.Ignore))
+        if (TryFindWallSurfaceHit(rayStart, rayDir, 3.2f, out RaycastHit hit) ||
+            TryFallbackOverlappedWallHit(rayStart, chestCenter.y, out hit))
         {
-            if (hit.collider != null && !hit.collider.transform.IsChildOf(transform))
-            {
-                // Make sure we hit a vertical wall rather than the floor
-                if (Mathf.Abs(hit.normal.y) < 0.45f)
-                {
-                    m_LastWallMarkTime = Time.time;
-                    Vector3 wallSurfacePos = hit.point + hit.normal * 0.02f;
-                    Quaternion wallRot = Quaternion.LookRotation(-hit.normal, Vector3.up);
-                    Vector3 riftScale = new Vector3(wallMarkSize, wallMarkSize * 1.25f, 1.0f);
+            if (isEnteringWall)
+                m_LastWallEntryMarkTime = Time.time;
+            else
+                m_LastWallExitMarkTime = Time.time;
 
-                    GhostTrace trace = GetNextPooledTrace();
-                    if (trace != null)
-                    {
-                        trace.ActivateTrace(
-                            wallSurfacePos,
-                            wallRot,
-                            hit.normal,
-                            riftScale,
-                            wallMarkLifetimeSeconds,
-                            GhostTrace.TraceVisualType.WallPhaseRift,
-                            wallMarkUVColor
-                        );
-                    }
-                }
+            SpawnWallMarkAtHit(hit, chestCenter.y, isEnteringWall);
+        }
+    }
+
+    private bool TryFindWallSurfaceHit(Vector3 rayStart, Vector3 rayDir, float maxDistance, out RaycastHit bestHit)
+    {
+        bestHit = default;
+        int hitCount = Physics.RaycastNonAlloc(rayStart, rayDir, m_WallRayHits, maxDistance, obstacleLayers, QueryTriggerInteraction.Ignore);
+        if (hitCount == 0)
+            return false;
+
+        float closestDist = float.MaxValue;
+        bool found = false;
+
+        for (int i = 0; i < hitCount; i++)
+        {
+            RaycastHit h = m_WallRayHits[i];
+            Collider col = h.collider;
+            if (col == null)
+                continue;
+
+            // Skip Ghost's own collider, Player rig colliders, and GhostDummy colliders!
+            if (col.transform.IsChildOf(transform))
+                continue;
+
+            if (playerHead != null && col.transform.IsChildOf(playerHead.root))
+                continue;
+
+            if (col.GetComponentInParent<GhostTarget>() != null)
+                continue;
+
+            // Must be a vertical wall surface rather than floor/ceiling
+            if (Mathf.Abs(h.normal.y) >= 0.45f)
+                continue;
+
+            if (h.distance < closestDist)
+            {
+                closestDist = h.distance;
+                bestHit = h;
+                found = true;
             }
+        }
+
+        return found;
+    }
+
+    private bool TryFallbackOverlappedWallHit(Vector3 sideOrigin, float ghostCenterY, out RaycastHit wallHit)
+    {
+        wallHit = default;
+        if (m_LastOverlappedWallCollider == null)
+            return false;
+
+        Bounds wb = m_LastOverlappedWallCollider.bounds;
+        Vector3 targetPoint = wb.center;
+        targetPoint.y = Mathf.Clamp(ghostCenterY, wb.min.y + 0.15f, wb.max.y - 0.15f);
+
+        Vector3 toWall = targetPoint - sideOrigin;
+        float dist = toWall.magnitude;
+        if (dist < 0.02f)
+            return false;
+
+        Ray ray = new Ray(sideOrigin, toWall / dist);
+        if (m_LastOverlappedWallCollider.Raycast(ray, out RaycastHit hit, dist + 1.5f))
+        {
+            if (Mathf.Abs(hit.normal.y) < 0.45f)
+            {
+                wallHit = hit;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void SpawnWallMarkAtHit(RaycastHit hit, float ghostCenterY, bool isEnteringWall)
+    {
+        Vector3 wallNormal = new Vector3(hit.normal.x, 0f, hit.normal.z);
+        if (wallNormal.sqrMagnitude < 0.001f)
+            wallNormal = hit.normal.normalized;
+        else
+            wallNormal.Normalize();
+
+        bool useLateOutline = IsLateWallPhaseTier;
+        GhostTrace trace = GetNextPooledTrace(isHighPriorityWallMark: true);
+        if (trace == null)
+            return;
+
+        string sideLabel = isEnteringWall ? "Entry" : "Exit";
+
+        if (!useLateOutline)
+        {
+            // Scenario 1 (Rounds 1-3): Organic UV Ectoplasm Wall Splash with unique random roll & droplet seed
+            Vector3 splashPos = hit.point + wallNormal * 0.022f;
+            Quaternion baseWallRot = Quaternion.LookRotation(-wallNormal, Vector3.up);
+            Quaternion randomSplashRot = Quaternion.AngleAxis(Random.Range(0f, 360f), wallNormal) * baseWallRot;
+            Vector3 splashScale = new Vector3(earlyWallSplashSize, earlyWallSplashSize, 1.0f);
+            float splashSeed = Random.Range(0.1f, 99.9f);
+
+            trace.ActivateTrace(
+                splashPos,
+                randomSplashRot,
+                wallNormal,
+                splashScale,
+                wallMarkLifetimeSeconds,
+                GhostTrace.TraceVisualType.WallSplash,
+                earlyWallSplashUVColor,
+                splashSeed,
+                null,
+                hit.collider
+            );
+
+            Debug.Log($"[{gameObject.name}] Spawned UV WallSplash ({sideLabel}) on '{hit.collider.name}' at {splashPos}");
+        }
+        else
+        {
+            // Scenario 2 (Rounds 4-6): Upright Life-Size Hollow Ghost Silhouette Outline (Capsule now; 3D Ghost Girl ready!)
+            float floorY = FindFloorHeightAt(hit.point + wallNormal * 0.18f);
+            float minCenterY = floorY + (m_RestingBodyHeight * 0.5f) + 0.02f;
+            float outlineCenterY = Mathf.Max(minCenterY, ghostCenterY);
+
+            Vector3 outlinePos = new Vector3(hit.point.x, outlineCenterY, hit.point.z) + wallNormal * 0.024f;
+            Quaternion uprightWallRot = Quaternion.LookRotation(-wallNormal, Vector3.up);
+            Vector3 outlineScale = new Vector3(
+                m_RestingBodyWidth * ghostOutlinePadding,
+                m_RestingBodyHeight * ghostOutlinePadding,
+                1.0f
+            );
+
+            trace.ActivateTrace(
+                outlinePos,
+                uprightWallRot,
+                wallNormal,
+                outlineScale,
+                wallMarkLifetimeSeconds,
+                GhostTrace.TraceVisualType.GhostOutline,
+                lateGhostOutlineUVColor,
+                0f,
+                customGhostSilhouetteTexture,
+                hit.collider
+            );
+
+            Debug.Log($"[{gameObject.name}] Spawned UV GhostOutline ({sideLabel}) on '{hit.collider.name}' at {outlinePos}");
         }
     }
 
     private float FindFloorHeightAt(Vector3 worldPos)
     {
-        Vector3 rayStart = new Vector3(worldPos.x, transform.position.y + 0.5f, worldPos.z);
-        if (Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, 4.0f, obstacleLayers, QueryTriggerInteraction.Ignore))
+        Vector3 rayStart = new Vector3(worldPos.x, transform.position.y + 0.8f, worldPos.z);
+        int hitCount = Physics.RaycastNonAlloc(rayStart, Vector3.down, m_WallRayHits, 6.0f, obstacleLayers, QueryTriggerInteraction.Ignore);
+
+        float closestDist = float.MaxValue;
+        float bestFloorY = m_BaseYPosition - 0.98f;
+        bool foundFloor = false;
+
+        for (int i = 0; i < hitCount; i++)
         {
-            if (!hit.collider.transform.IsChildOf(transform))
+            RaycastHit h = m_WallRayHits[i];
+            Collider col = h.collider;
+            if (col == null || col.transform.IsChildOf(transform))
+                continue;
+
+            if (playerHead != null && col.transform.IsChildOf(playerHead.root))
+                continue;
+
+            if (col.GetComponentInParent<GhostTarget>() != null)
+                continue;
+
+            if (h.normal.y < 0.65f)
+                continue;
+
+            if (h.distance < closestDist)
             {
-                return hit.point.y;
+                closestDist = h.distance;
+                bestFloorY = h.point.y;
+                foundFloor = true;
             }
         }
 
-        return m_BaseYPosition - 0.98f;
+        return foundFloor ? bestFloorY : (m_BaseYPosition - 0.98f);
     }
 
     // =========================================================================
@@ -657,29 +920,68 @@ public class GhostAI : MonoBehaviour
         {
             isPhasingThroughWall = false;
             m_CurrentWallPhaseBlend = 0f;
+            m_LateWallSurgeTimer = 0f;
             transform.localScale = m_InitialLocalScale;
             if (m_GhostTarget != null)
                 m_GhostTarget.SetWallPhaseBlend(0f);
             return;
         }
 
-        bool checkLookAhead = (currentState == GhostState.Fleeing || currentState == GhostState.Stalking);
-        isPhasingThroughWall = DetectWallOverlap(checkLookAhead);
+        Vector3 currentChestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
+        bool isActivelyMoving = (currentState == GhostState.Fleeing || currentState == GhostState.Stalking);
+        bool isLateTier = IsLateWallPhaseTier;
+
+        isPhasingThroughWall = DetectWallOverlap(isActivelyMoving);
 
         if (isPhasingThroughWall && !m_WasPhasingLastFrame)
         {
-            Debug.Log($"[{gameObject.name}] Phasing through solid wall (Spectral Shift + UV Wall Rift spawned)!");
+            string tierDesc = isLateTier
+                ? $"LATE TIER (Round {activeRoundNumber}) -> Super-Fast Wall Surge + UV Ghost Outline!"
+                : $"EARLY TIER (Round {activeRoundNumber}) -> Normal Glide + UV Wall Splash!";
+            Debug.Log($"[{gameObject.name}] Phasing through solid wall [{tierDesc}]");
             TrySpawnWallPhaseMark(isEnteringWall: true);
         }
         else if (!isPhasingThroughWall && m_WasPhasingLastFrame)
         {
-            // Also leave an exit rift mark on the far side of the wall!
+            // Leave exit Splash or Ghost Outline on the far side of the wall!
             TrySpawnWallPhaseMark(isEnteringWall: false);
         }
+        else if (!isPhasingThroughWall && !m_WasPhasingLastFrame && isActivelyMoving)
+        {
+            // Safety fallback: if a huge frame spike at high speed stepped completely across a thin wall in 1 frame
+            Vector3 stepDelta = currentChestCenter - m_PreviousChestCenter;
+            if (stepDelta.sqrMagnitude > 0.04f &&
+                Physics.Linecast(m_PreviousChestCenter, currentChestCenter, out RaycastHit tunnelHit, obstacleLayers, QueryTriggerInteraction.Ignore))
+            {
+                if (tunnelHit.collider != null &&
+                    !tunnelHit.collider.transform.IsChildOf(transform) &&
+                    Mathf.Abs(tunnelHit.normal.y) < 0.45f)
+                {
+                    if (isLateTier)
+                        m_LateWallSurgeTimer = lateWallSpeedBoostDuration;
+
+                    TrySpawnWallPhaseMark(isEnteringWall: true);
+                    TrySpawnWallPhaseMark(isEnteringWall: false);
+                }
+            }
+        }
+
         m_WasPhasingLastFrame = isPhasingThroughWall;
+        m_PreviousChestCenter = currentChestCenter;
+
+        // Maintain / decay Late-Round post-wall speed surge timer
+        if (isLateTier && isPhasingThroughWall)
+        {
+            m_LateWallSurgeTimer = lateWallSpeedBoostDuration;
+        }
+        else if (m_LateWallSurgeTimer > 0f)
+        {
+            m_LateWallSurgeTimer = Mathf.Max(0f, m_LateWallSurgeTimer - Time.deltaTime);
+        }
 
         float targetBlend = isPhasingThroughWall ? 1.0f : 0.0f;
-        m_CurrentWallPhaseBlend = Mathf.MoveTowards(m_CurrentWallPhaseBlend, targetBlend, phaseTransitionSpeed * Time.deltaTime);
+        float effectivePhaseRamp = isLateTier ? Mathf.Max(phaseTransitionSpeed * 2.5f, 15.0f) : phaseTransitionSpeed;
+        m_CurrentWallPhaseBlend = Mathf.MoveTowards(m_CurrentWallPhaseBlend, targetBlend, effectivePhaseRamp * Time.deltaTime);
 
         if (m_GhostTarget != null)
         {
@@ -691,6 +993,22 @@ public class GhostAI : MonoBehaviour
             m_InitialLocalScale.y * Mathf.Lerp(1f, phaseScaleMultiplier.y, m_CurrentWallPhaseBlend),
             m_InitialLocalScale.z * Mathf.Lerp(1f, phaseScaleMultiplier.z, m_CurrentWallPhaseBlend)
         );
+    }
+
+    private float GetActiveWallSpeedMultiplier()
+    {
+        if (!IsLateWallPhaseTier)
+        {
+            return Mathf.Lerp(1.0f, wallPhaseSpeedMultiplier, m_CurrentWallPhaseBlend);
+        }
+
+        float inWallMultiplier = Mathf.Lerp(1.0f, lateWallPhaseSpeedMultiplier, m_CurrentWallPhaseBlend);
+        float surgeProgress = lateWallSpeedBoostDuration > 0.01f
+            ? Mathf.Clamp01(m_LateWallSurgeTimer / lateWallSpeedBoostDuration)
+            : 0f;
+        float postWallMultiplier = Mathf.Lerp(1.0f, lateWallSpeedBoostMultiplier, Mathf.SmoothStep(0f, 1f, surgeProgress));
+
+        return Mathf.Max(inWallMultiplier, postWallMultiplier);
     }
 
     private bool DetectWallOverlap(bool includeForwardLookAhead)
@@ -751,6 +1069,7 @@ public class GhostAI : MonoBehaviour
             if (col.bounds.max.y <= floorHeightCutoff)
                 continue;
 
+            m_LastOverlappedWallCollider = col;
             return true;
         }
 
@@ -817,6 +1136,7 @@ public class GhostAI : MonoBehaviour
         m_StalkTimer = 0f;
         m_BaseYPosition = transform.position.y;
         m_LastTraceDropPosition = transform.position;
+        m_PreviousChestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
         Debug.Log($"[{gameObject.name}] Player hasn't found ghost for {stalkStartDelaySeconds:F0}s -> Entering STALKING Phantom state!");
     }
 
@@ -854,7 +1174,7 @@ public class GhostAI : MonoBehaviour
 
         if (distanceToPlayer > stalkStopDistance)
         {
-            float activeStalkSpeed = stalkSpeed * Mathf.Lerp(1f, wallPhaseSpeedMultiplier, m_CurrentWallPhaseBlend);
+            float activeStalkSpeed = stalkSpeed * GetActiveWallSpeedMultiplier();
             Vector3 nextFlatPos = Vector3.MoveTowards(currentFlatPos, flatPlayerPos, activeStalkSpeed * Time.deltaTime);
             float hoverY = m_BaseYPosition + CalculateHoverAndShimmerOffset();
             transform.position = new Vector3(nextFlatPos.x, hoverY, nextFlatPos.z);
@@ -1009,7 +1329,7 @@ public class GhostAI : MonoBehaviour
             activeWeaveAmp *= Mathf.Lerp(1.0f, 0.35f, captureProgress);
         }
 
-        activeSpeed *= Mathf.Lerp(1f, wallPhaseSpeedMultiplier, m_CurrentWallPhaseBlend);
+        activeSpeed *= GetActiveWallSpeedMultiplier();
 
         // 2. Advance Core Path Toward Hiding Spot
         m_CorePathPosition = Vector3.MoveTowards(m_CorePathPosition, targetPos, activeSpeed * Time.deltaTime);
@@ -1236,11 +1556,21 @@ public class GhostAI : MonoBehaviour
         float newWatchDuration,
         float newWatchChance,
         float newWeaveAmplitude = -1f,
-        float newWeaveFrequency = -1f)
+        float newWeaveFrequency = -1f,
+        int roundNumber = -1)
     {
         if (m_GhostTarget == null)
         {
             m_GhostTarget = GetComponent<GhostTarget>();
+        }
+
+        if (roundNumber >= 1)
+        {
+            activeRoundNumber = roundNumber;
+        }
+        else if (RoundManager.Instance != null)
+        {
+            activeRoundNumber = RoundManager.Instance.CurrentRound;
         }
 
         fleeSpeed = newFleeSpeed;
@@ -1261,6 +1591,7 @@ public class GhostAI : MonoBehaviour
         m_LateralOffsetVelocity = 0f;
         m_FleeElapsedSeconds = 0f;
         m_CurrentWallPhaseBlend = 0f;
+        m_LateWallSurgeTimer = 0f;
         m_WasPhasingLastFrame = false;
         m_WasIlluminatedDuringStare = false;
         transform.localScale = m_InitialLocalScale;
@@ -1290,7 +1621,10 @@ public class GhostAI : MonoBehaviour
             gameObject.SetActive(true);
         }
 
-        Debug.Log($"[{gameObject.name}] Respawned (Cloaked={cloakWhileHidden}) at '{(m_CurrentSpot != null ? m_CurrentSpot.SpotName : "Start")}' | Speed: {fleeSpeed:F2} m/s | Weave: {weaveAmplitude:F2}m @ {weaveFrequency:F1}Hz | Stare: {watchPlayerDuration:F1}s");
+        m_PreviousChestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
+
+        string wallTier = IsLateWallPhaseTier ? "LATE (Super-Fast Surge + Ghost Outline)" : "EARLY (Splash)";
+        Debug.Log($"[{gameObject.name}] Round {activeRoundNumber} Spawn (Cloaked={cloakWhileHidden}, WallTier={wallTier}) at '{(m_CurrentSpot != null ? m_CurrentSpot.SpotName : "Start")}' | Speed: {fleeSpeed:F2} m/s");
     }
 
     private void StartFleeing()
@@ -1299,6 +1633,7 @@ public class GhostAI : MonoBehaviour
         m_TargetSpot = GetSmartNextHidingSpot();
         m_CorePathPosition = escapeOrigin;
         m_LastTraceDropPosition = escapeOrigin;
+        m_PreviousChestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : escapeOrigin;
         m_CurrentLateralOffset = 0f;
         m_LateralOffsetVelocity = 0f;
         m_FleePhaseTime = 0f;

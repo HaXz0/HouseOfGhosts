@@ -2,24 +2,31 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
+[DefaultExecutionOrder(10)]
 [DisallowMultipleComponent]
 public class GhostTrace : MonoBehaviour
 {
     public enum TraceVisualType
     {
         Footprint = 0,
-        WallPhaseRift = 1,
-        ResidualRing = 2
+        WallSplash = 1,
+        ResidualRing = 2,
+        GhostOutline = 3,
+        WallPhaseRift = WallSplash
     }
 
     public static readonly List<GhostTrace> ActiveTraces = new List<GhostTrace>();
 
     [Header("UV Reveal Settings")]
-    [Tooltip("Shape rendered on this UV trace (Footprint, WallPhaseRift, or ResidualRing).")]
+    [Tooltip("Shape rendered on this UV trace (Footprint, WallSplash, ResidualRing, or GhostOutline).")]
     [SerializeField] private TraceVisualType traceType = TraceVisualType.Footprint;
 
     [Tooltip("Fluorescent color when revealed by the UV flashlight.")]
     [SerializeField] private Color uvFluorescentColor = new Color(0.15f, 1.0f, 0.78f, 1.0f);
+
+    [Tooltip("Thickness of the hollow contour when rendering GhostOutline (Shape 3).")]
+    [Range(0.015f, 0.12f)]
+    [SerializeField] private float outlineThickness = 0.042f;
 
     [Tooltip("How fast the trace lights up when hit by the UV beam.")]
     [SerializeField] private float revealSpeed = 6.5f;
@@ -47,6 +54,10 @@ public class GhostTrace : MonoBehaviour
     private Renderer m_Renderer;
     private MaterialPropertyBlock m_PropBlock;
     private Vector3 m_SurfaceNormal = Vector3.up;
+    private Collider m_SurfaceCollider = null;
+    private float m_TraceSeed = 0f;
+    private float m_QuadAspect = 1.0f;
+    private Texture m_CustomSilhouetteTex = null;
     private bool m_IsHitByUVThisFrame = false;
     private float m_TargetStrengthThisFrame = 1f;
     private float m_AfterglowTimer = 0f;
@@ -56,11 +67,18 @@ public class GhostTrace : MonoBehaviour
     private static readonly int s_UVGlowColorId = Shader.PropertyToID("_UVGlowColor");
     private static readonly int s_RevealAmountId = Shader.PropertyToID("_RevealAmount");
     private static readonly int s_TraceShapeId = Shader.PropertyToID("_TraceShape");
+    private static readonly int s_TraceSeedId = Shader.PropertyToID("_TraceSeed");
+    private static readonly int s_QuadAspectId = Shader.PropertyToID("_QuadAspect");
+    private static readonly int s_OutlineThicknessId = Shader.PropertyToID("_OutlineThickness");
+    private static readonly int s_UseSilhouetteTexId = Shader.PropertyToID("_UseSilhouetteTex");
+    private static readonly int s_SilhouetteTexId = Shader.PropertyToID("_SilhouetteTex");
 
     public Vector3 Position => transform.position;
     public Vector3 SurfaceNormal => m_SurfaceNormal;
+    public Collider SurfaceCollider => m_SurfaceCollider;
     public TraceVisualType CurrentTraceType => traceType;
     public float CurrentRevealAmount => currentRevealAmount;
+    public bool IsWallMark => traceType == TraceVisualType.WallSplash || traceType == TraceVisualType.GhostOutline;
 
     public void SetTraceMaterial(Material mat)
     {
@@ -86,6 +104,7 @@ public class GhostTrace : MonoBehaviour
     {
         m_PropBlock = new MaterialPropertyBlock();
         m_Renderer = GetComponentInChildren<Renderer>(true);
+        m_QuadAspect = transform.localScale.x > 0.01f ? (transform.localScale.y / transform.localScale.x) : 1.0f;
         EnsureUVMaterialAssigned();
         ApplyVisuals(0f);
     }
@@ -144,6 +163,31 @@ public class GhostTrace : MonoBehaviour
     }
 
     /// <summary>
+    /// Fills up to 3 world-space sample points slightly offset along SurfaceNormal so tall wall silhouettes
+    /// (like the 2m Ghost Outline) light up smoothly whether the player aims at the feet, chest, or head.
+    /// </summary>
+    public int GetUVSamplePoints(Vector3[] buffer)
+    {
+        if (buffer == null || buffer.Length == 0)
+            return 0;
+
+        Vector3 normalOffset = m_SurfaceNormal * 0.04f;
+        Vector3 center = transform.position + normalOffset;
+        buffer[0] = center;
+
+        float height = transform.localScale.y;
+        if (height >= 0.95f && buffer.Length >= 3)
+        {
+            Vector3 upOffset = transform.up * (height * 0.34f);
+            buffer[1] = center + upOffset;
+            buffer[2] = center - upOffset;
+            return 3;
+        }
+
+        return 1;
+    }
+
+    /// <summary>
     /// Called by FlashlightCaptureDetector each frame the UV beam illuminates this trace.
     /// </summary>
     public void ReportUVIlluminated(float intensityFactor = 1.0f)
@@ -153,7 +197,7 @@ public class GhostTrace : MonoBehaviour
     }
 
     /// <summary>
-    /// Spawns or repositions a pooled UV trace (Footprint, Wall-Phase Rift, or Hiding/Hint Ring).
+    /// Spawns or repositions a pooled UV trace (Footprint, WallSplash, ResidualRing, or GhostOutline).
     /// </summary>
     public void ActivateTrace(
         Vector3 worldPos,
@@ -162,11 +206,18 @@ public class GhostTrace : MonoBehaviour
         Vector3 scale,
         float lifetime,
         TraceVisualType visualType,
-        Color glowColor)
+        Color glowColor,
+        float randomSeed = 0f,
+        Texture customSilhouette = null,
+        Collider surfaceCollider = null)
     {
         transform.SetPositionAndRotation(worldPos, worldRot);
         transform.localScale = scale;
         m_SurfaceNormal = surfaceNormal.sqrMagnitude > 0.001f ? surfaceNormal.normalized : Vector3.up;
+        m_SurfaceCollider = surfaceCollider;
+        m_QuadAspect = scale.x > 0.01f ? (scale.y / scale.x) : 1.0f;
+        m_TraceSeed = randomSeed;
+        m_CustomSilhouetteTex = customSilhouette;
         traceLifetimeSeconds = lifetime;
         traceType = visualType;
         uvFluorescentColor = glowColor;
@@ -229,10 +280,21 @@ public class GhostTrace : MonoBehaviour
         if (!shouldRender)
             return;
 
-        m_Renderer.GetPropertyBlock(m_PropBlock);
+        m_PropBlock.Clear();
         m_PropBlock.SetColor(s_UVGlowColorId, uvFluorescentColor);
         m_PropBlock.SetFloat(s_RevealAmountId, reveal01);
         m_PropBlock.SetFloat(s_TraceShapeId, (float)traceType);
+        m_PropBlock.SetFloat(s_TraceSeedId, m_TraceSeed);
+        m_PropBlock.SetFloat(s_QuadAspectId, m_QuadAspect);
+        m_PropBlock.SetFloat(s_OutlineThicknessId, outlineThickness);
+
+        bool hasCustomSilhouette = (traceType == TraceVisualType.GhostOutline && m_CustomSilhouetteTex != null);
+        m_PropBlock.SetFloat(s_UseSilhouetteTexId, hasCustomSilhouette ? 1.0f : 0.0f);
+        if (hasCustomSilhouette)
+        {
+            m_PropBlock.SetTexture(s_SilhouetteTexId, m_CustomSilhouetteTex);
+        }
+
         m_Renderer.SetPropertyBlock(m_PropBlock);
     }
 

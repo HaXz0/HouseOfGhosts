@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
+[DefaultExecutionOrder(-50)]
 [DisallowMultipleComponent]
 public class FlashlightCaptureDetector : MonoBehaviour
 {
@@ -29,6 +30,7 @@ public class FlashlightCaptureDetector : MonoBehaviour
     [SerializeField] private bool drawDebugGizmos = true;
 
     private readonly Vector3[] m_AimPoints = new Vector3[3];
+    private readonly Vector3[] m_TraceSamplePoints = new Vector3[3];
     private readonly RaycastHit[] m_HitBuffer = new RaycastHit[12];
     private Collider[] m_SelfColliders;
 
@@ -138,30 +140,48 @@ public class FlashlightCaptureDetector : MonoBehaviour
             if (trace == null || !trace.gameObject.activeInHierarchy)
                 continue;
 
-            // Offset slightly outward along the trace's surface normal (up for floor, wall normal for wall rifts)
-            Vector3 tracePoint = trace.Position + trace.SurfaceNormal * 0.04f;
-            Vector3 toTrace = tracePoint - beamOrigin;
-            float distance = toTrace.magnitude;
-
-            if (distance > maxRange || distance < 0.01f)
+            // For wall splashes/outlines, ensure the flashlight is on the front side of that wall surface
+            if (trace.IsWallMark && Vector3.Dot(beamOrigin - trace.Position, trace.SurfaceNormal) <= 0.005f)
                 continue;
 
-            Vector3 direction = toTrace / distance;
-            float angle = Vector3.Angle(beamForward, direction);
-            if (angle > halfSpotAngle)
-                continue;
+            int pointCount = trace.GetUVSamplePoints(m_TraceSamplePoints);
+            float bestIntensity = 0f;
 
-            // Ensure no wall blocks the UV beam from reaching the trace
-            if (!IsBlockedByWall(beamOrigin, direction, distance - 0.05f))
+            for (int p = 0; p < pointCount; p++)
             {
-                float distanceFalloff = 1.0f - Mathf.Clamp01(distance / maxRange) * 0.4f;
-                float angleFalloff = 1.0f - Mathf.Clamp01(angle / halfSpotAngle) * 0.35f;
-                trace.ReportUVIlluminated(distanceFalloff * angleFalloff);
+                Vector3 tracePoint = m_TraceSamplePoints[p];
+                Vector3 toTrace = tracePoint - beamOrigin;
+                float distance = toTrace.magnitude;
+
+                if (distance > maxRange || distance < 0.01f)
+                    continue;
+
+                Vector3 direction = toTrace / distance;
+                float angle = Vector3.Angle(beamForward, direction);
+                if (angle > halfSpotAngle)
+                    continue;
+
+                // Ensure no OTHER wall blocks the UV beam from reaching this point of the trace
+                if (!IsBlockedByWall(beamOrigin, direction, distance - 0.04f, trace.SurfaceCollider))
+                {
+                    float distanceFalloff = 1.0f - Mathf.Clamp01(distance / maxRange) * 0.4f;
+                    float angleFalloff = 1.0f - Mathf.Clamp01(angle / halfSpotAngle) * 0.35f;
+                    float intensity = distanceFalloff * angleFalloff;
+                    if (intensity > bestIntensity)
+                    {
+                        bestIntensity = intensity;
+                    }
+                }
+            }
+
+            if (bestIntensity > 0f)
+            {
+                trace.ReportUVIlluminated(bestIntensity);
             }
         }
     }
 
-    private bool IsBlockedByWall(Vector3 origin, Vector3 direction, float checkDistance)
+    private bool IsBlockedByWall(Vector3 origin, Vector3 direction, float checkDistance, Collider hostSurfaceCollider = null)
     {
         if (checkDistance <= 0.05f)
             return false;
@@ -174,6 +194,10 @@ public class FlashlightCaptureDetector : MonoBehaviour
                 continue;
 
             if (hitCol.GetComponentInParent<GhostTarget>() != null)
+                continue;
+
+            // Ignore grazing contact near the end of the ray against the exact wall surface hosting this UV decal
+            if (hostSurfaceCollider != null && hitCol == hostSurfaceCollider && m_HitBuffer[i].distance >= checkDistance - 0.18f)
                 continue;
 
             return true;

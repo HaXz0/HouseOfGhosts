@@ -27,10 +27,18 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _SilhouetteTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _OutlineThickness: 0.042
+    - _QuadAspect: 2
     - _RevealAmount: 0
+    - _TraceSeed: 0
     - _TraceShape: 0
+    - _UseSilhouetteTex: 0
     m_Colors:
     - _UVGlowColor: {r: 0.15, g: 1, b: 0.78, a: 1}
   m_BuildTextureStacks: []
