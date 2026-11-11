@@ -17,6 +17,54 @@ public class GhostAI : MonoBehaviour
     [Header("Current State (Read Only)")]
     [SerializeField] private GhostState currentState = GhostState.Hidden;
     [SerializeField] private bool isPhasingThroughWall = false;
+    [SerializeField] private float currentSpectralVisibility = 0f;
+
+    [Header("Stage 1: Cloak & Supernatural Materialization")]
+    [Tooltip("If true, the ghost is completely invisible while Hidden and materializes smoothly when discovered.")]
+    [SerializeField] private bool cloakWhileHidden = true;
+
+    [Tooltip("Seconds it takes for the ghost to materialize from floor to head (0% -> 100%) when spotted.")]
+    [Range(0.1f, 1.5f)]
+    [SerializeField] private float materializeDuration = 0.45f;
+
+    [Tooltip("Seconds it takes for the ghost to melt into shadows (100% -> 0%) after reaching a hiding spot.")]
+    [Range(0.1f, 1.5f)]
+    [SerializeField] private float dematerializeDuration = 0.40f;
+
+    [Tooltip("If true, the ghost CANNOT turn invisible at a hiding spot while your Normal flashlight beam is actively hitting her.")]
+    [SerializeField] private bool preventCloakWhileIlluminated = true;
+
+    [Tooltip("Semi-translucent phantom visibility (0.62 = 62%) while creeping toward the player in Stalking state.")]
+    [Range(0.2f, 1.0f)]
+    [SerializeField] private float stalkPhantomVisibility = 0.62f;
+
+    [Tooltip("Ghostly UV silhouette visibility (0.38 = 38%) when you shine the UV flashlight onto a cloaked Hidden ghost.")]
+    [Range(0.15f, 0.85f)]
+    [SerializeField] private float uvCloakShimmerVisibility = 0.38f;
+
+    [Tooltip("Rim glow color when the UV beam reveals a cloaked ghost.")]
+    [SerializeField] private Color uvShimmerRimColor = new Color(0.58f, 0.22f, 1.0f, 1.0f);
+
+    [Tooltip("If true, holding the UV beam on a Hidden ghost for uvDisturbDuration spooks her into Fake Escape.")]
+    [SerializeField] private bool disturbWithUVBeam = true;
+
+    [Tooltip("Seconds of continuous UV beam exposure before a Hidden ghost bolts (gives you time to switch to Normal light!).")]
+    [SerializeField] private float uvDisturbDuration = 1.2f;
+
+    [Header("Stage 2: Flashlight Beam-Lock Struggle")]
+    [Tooltip("If true, holding the Normal beam on the ghost makes her visibly tremble and drags down her flee speed as capture nears 3s.")]
+    [SerializeField] private bool enableBeamStruggle = true;
+
+    [Tooltip("Maximum flee speed reduction (0.45 = 45% slower) as the 3-second capture progress nears 100%.")]
+    [Range(0f, 0.8f)]
+    [SerializeField] private float maxBeamSlowdownFactor = 0.45f;
+
+    [Tooltip("Subtle struggle shiver intensity (meters) as capture nears 3s (0.02 = gentle supernatural tremble).")]
+    [Range(0f, 0.08f)]
+    [SerializeField] private float struggleTrembleAmplitude = 0.02f;
+
+    [Tooltip("Vibration speed (Hz) while struggling near the end of the 3s capture.")]
+    [SerializeField] private float struggleTrembleFrequency = 26.0f;
 
     [Header("Fake Escape Settings")]
     [Tooltip("Probability (0.5 = 50%) for Behaviour A (stare at player before fleeing).")]
@@ -45,38 +93,39 @@ public class GhostAI : MonoBehaviour
     [Tooltip("Speed of the vertical floating bob.")]
     [SerializeField] private float hoverFrequency = 2.5f;
 
-    [Header("Evasive Weaving (Fleeing)")]
-    [Tooltip("If true, the ghost weaves left and right while fleeing instead of moving in a straight line.")]
+    [Header("Evasive Weaving (Smooth Ghostly Glide)")]
+    [Tooltip("If true, the ghost glides in a smooth S-curve while fleeing instead of a robotic straight line.")]
     [SerializeField] private bool enableEvasiveWeaving = true;
 
-    [Tooltip("How far left/right (in meters) the ghost sways from her core path.")]
-    [SerializeField] private float weaveAmplitude = 0.55f;
+    [Tooltip("How far left/right (meters) the ghost gently drifts from her core path (0.30m = smooth ghostly sway).")]
+    [SerializeField] private float weaveAmplitude = 0.30f;
 
-    [Tooltip("How fast the ghost cycles her left-right weave.")]
-    [SerializeField] private float weaveFrequency = 3.0f;
+    [Tooltip("Cycles per second of her left-right glide (0.55 Hz = ~1.8s per full smooth S-curve).")]
+    [SerializeField] private float weaveFrequency = 0.55f;
 
-    [Tooltip("Blends predictable Sine wave (0.0) with unpredictable Perlin Noise (1.0). 0.35 feels organic.")]
+    [Tooltip("Higher = softer, floatier ghostly curves (seconds). Lower = sharper turns.")]
+    [Range(0.1f, 1.0f)]
+    [SerializeField] private float weaveSmoothTime = 0.42f;
+
+    [Tooltip("Blends pure Sine wave (0.0) with subtle organic variation (0.12 feels smooth yet alive).")]
     [Range(0f, 1f)]
-    [SerializeField] private float erraticNoiseBlend = 0.35f;
+    [SerializeField] private float erraticNoiseBlend = 0.12f;
 
     [Tooltip("Distance from the destination hiding spot where weaving smoothly tapers down to 0.")]
-    [SerializeField] private float arrivalTaperDistance = 1.5f;
-
-    [Tooltip("How quickly her body darts sideways when changing weave/juke direction (meters/sec).")]
-    [SerializeField] private float lateralDartResponsiveness = 5.5f;
+    [SerializeField] private float arrivalTaperDistance = 1.6f;
 
     [Header("Reactive Flashlight Panic Dodge")]
-    [Tooltip("If true, the ghost speeds up, weaves wider, and jukes when hit by the flashlight beam while fleeing.")]
+    [Tooltip("If true, the ghost subtly surges and curves away when hit by the flashlight beam while fleeing.")]
     [SerializeField] private bool enablePanicDodge = true;
 
-    [Tooltip("Forward speed multiplier while the flashlight beam is hitting her during a flee (1.25 = 25% faster).")]
-    [SerializeField] private float illuminatedSpeedMultiplier = 1.25f;
+    [Tooltip("Initial startle speed multiplier when first hit by the beam (overcome by Stage 2 Beam-Lock drag as capture fills!).")]
+    [SerializeField] private float illuminatedSpeedMultiplier = 1.15f;
 
-    [Tooltip("Weave width multiplier while the flashlight beam is hitting her (1.5 = 50% wider dodges).")]
-    [SerializeField] private float illuminatedWeaveMultiplier = 1.5f;
+    [Tooltip("Subtle weave width multiplier while the flashlight beam is hitting her (1.2 = 20% wider smooth arc).")]
+    [SerializeField] private float illuminatedWeaveMultiplier = 1.20f;
 
-    [Tooltip("Seconds of continuous flashlight illumination while fleeing before she sharply flips dodge direction.")]
-    [SerializeField] private float jukeIntervalUnderBeam = 1.0f;
+    [Tooltip("Seconds of continuous flashlight illumination while fleeing before she smoothly curves to the opposite side.")]
+    [SerializeField] private float jukeIntervalUnderBeam = 2.2f;
 
     [Header("Supernatural Wall-Phasing")]
     [Tooltip("If true, the ghost glows spectral cyan, compresses her silhouette, and shimmers when passing through walls.")]
@@ -100,7 +149,7 @@ public class GhostAI : MonoBehaviour
     [Tooltip("Fast ethereal shimmer frequency while inside solid wall matter.")]
     [SerializeField] private float phaseShimmerFrequency = 16.0f;
 
-    [Header("UV Ghost Traces (Footprint Trail)")]
+    [Header("Stage 3: UV Footprints, Wall-Phase Rifts & Escape Clues")]
     [Tooltip("If true, the ghost leaves behind invisible UV footprint traces along the floor when fleeing or stalking.")]
     [SerializeField] private bool leaveUVTraceTrail = true;
 
@@ -110,10 +159,28 @@ public class GhostAI : MonoBehaviour
     [Tooltip("How long (seconds) each dropped footprint remains discoverable with the UV flashlight.")]
     [SerializeField] private float traceLifetimeSeconds = 25.0f;
 
-    [Tooltip("Number of reusable UV trace objects in the pool (zero runtime garbage collection).")]
-    [SerializeField] private int tracePoolSize = 18;
+    [Tooltip("Fluorescent color of standard UV footprints.")]
+    [SerializeField] private Color footprintUVColor = new Color(0.15f, 1.0f, 0.78f, 1.0f);
 
-    [Tooltip("Material using HouseOfGhosts/UVGhostTrace shader for footprints (automatically created if left empty).")]
+    [Tooltip("If true, passing through a solid wall leaves glowing UV Spectral Rift marks on BOTH sides of the wall!")]
+    [SerializeField] private bool leaveWallPhaseUVMarks = true;
+
+    [Tooltip("Diameter (meters) of the UV Spectral Rift mark left on walls.")]
+    [SerializeField] private float wallMarkSize = 0.55f;
+
+    [Tooltip("Seconds that UV Wall-Phase Rift marks stay discoverable.")]
+    [SerializeField] private float wallMarkLifetimeSeconds = 32.0f;
+
+    [Tooltip("Fluorescent cyan-violet color for UV Wall-Phase Rift marks.")]
+    [SerializeField] private Color wallMarkUVColor = new Color(0.38f, 0.72f, 1.0f, 1.0f);
+
+    [Tooltip("If true, bolting from a hiding spot leaves a pulsing UV Residual Ring at the spot she escaped from.")]
+    [SerializeField] private bool leaveEscapeOriginMark = true;
+
+    [Tooltip("Number of reusable UV trace objects in the pool (zero runtime garbage collection).")]
+    [SerializeField] private int tracePoolSize = 24;
+
+    [Tooltip("Material using HouseOfGhosts/UVGhostTrace shader for UV traces.")]
     [SerializeField] private Material uvTraceMaterial;
 
     [Header("Stalking / Creeping Behaviour")]
@@ -134,6 +201,14 @@ public class GhostAI : MonoBehaviour
 
     [Tooltip("Maximum seconds she will stalk/loom before relocating to a new hiding spot if you never turn around.")]
     [SerializeField] private float maxStalkDurationSeconds = 10.0f;
+
+    [Header("Stage 5: Search Hint Visual Settings")]
+    [Tooltip("Duration (seconds) of the brief ghostly silhouette flicker when RoundManager triggers a 60s Search Hint.")]
+    [SerializeField] private float hintFlickerDuration = 1.6f;
+
+    [Tooltip("Number of UV breadcrumb rings spawned toward the ghost when a Search Hint triggers.")]
+    [Range(0, 8)]
+    [SerializeField] private int hintBreadcrumbCount = 4;
 
     [Header("Trigger & Smart Hiding Conditions")]
     [Tooltip("Distance in meters that triggers ghost escape if you approach her hiding spot.")]
@@ -165,34 +240,47 @@ public class GhostAI : MonoBehaviour
     private float m_StalkTimer = 0f;
     private float m_BaseYPosition = 1.0f;
 
+    // Stage 1 cloak & UV disturb state
+    private float m_UVExposureTimer = 0f;
+    private float m_HintShimmerTimer = 0f;
+    private bool m_IsUsingHeightWipe = false;
+
     // Behaviour A beam-loss tracking
     private bool m_WasIlluminatedDuringStare = false;
     private float m_StareBeamLostGraceTimer = 0f;
 
-    // Evasive path tracking state
+    // Evasive path tracking state (SmoothDamp floating curves)
     private Vector3 m_CorePathPosition;
     private Vector3 m_LastPathForward = Vector3.forward;
     private float m_CurrentLateralOffset = 0f;
+    private float m_LateralOffsetVelocity = 0f;
     private float m_FleePhaseTime = 0f;
+    private float m_FleeElapsedSeconds = 0f;
     private float m_TimeUnderBeamWhileFleeing = 0f;
     private float m_JukeSign = 1f;
+    private float m_SmoothedJukeSign = 1f;
+    private float m_JukeSignVelocity = 0f;
     private float m_NoiseSeed = 0f;
 
-    // Wall-phasing state
+    // Wall-phasing & Stage 3 wall-mark state
     private Vector3 m_InitialLocalScale = Vector3.one;
     private float m_CurrentWallPhaseBlend = 0f;
     private bool m_WasPhasingLastFrame = false;
+    private float m_LastWallMarkTime = -10f;
     private readonly Collider[] m_WallOverlapBuffer = new Collider[12];
 
-    // UV Footprint Pool state
+    // UV Trace Pool state
     private readonly List<GhostTrace> m_TracePool = new List<GhostTrace>();
     private int m_NextTracePoolIndex = 0;
     private Vector3 m_LastTraceDropPosition;
     private bool m_NextFootIsRight = true;
     private Transform m_TracePoolContainer;
 
+    private static readonly Color s_PhantomRimColor = new Color(0.32f, 0.86f, 1.0f, 1.0f);
+
     public GhostState CurrentState => currentState;
     public bool IsPhasingThroughWall => isPhasingThroughWall;
+    public float CurrentSpectralVisibility => currentSpectralVisibility;
 
     private void Awake()
     {
@@ -229,10 +317,14 @@ public class GhostAI : MonoBehaviour
 
         m_LastTraceDropPosition = transform.position;
 
-        if (leaveUVTraceTrail && (m_GhostTarget == null || !m_GhostTarget.IsTestDummy))
+        if (m_GhostTarget == null || !m_GhostTarget.IsTestDummy)
         {
             InitializeTracePool();
         }
+
+        // Start cloaked if starting in Hidden state
+        currentSpectralVisibility = (cloakWhileHidden && currentState == GhostState.Hidden) ? 0f : 1f;
+        PushSpectralStateToTarget(currentSpectralVisibility, false, s_PhantomRimColor, 0f);
     }
 
     private void OnDestroy()
@@ -254,6 +346,7 @@ public class GhostAI : MonoBehaviour
             return;
 
         UpdateWallPhaseState();
+        UpdateCloakAndSpectralPresence();
 
         switch (currentState)
         {
@@ -275,19 +368,127 @@ public class GhostAI : MonoBehaviour
         }
     }
 
+    // =========================================================================
+    // STAGE 1: CLOAK, BOTTOM-UP MATERIALIZE, UV SHIMMER & STALKING PHANTOM
+    // =========================================================================
+    private void UpdateCloakAndSpectralPresence()
+    {
+        if (!cloakWhileHidden)
+        {
+            currentSpectralVisibility = 1.0f;
+            PushSpectralStateToTarget(1.0f, false, s_PhantomRimColor, 0f);
+            return;
+        }
+
+        if (m_HintShimmerTimer > 0f)
+        {
+            m_HintShimmerTimer -= Time.deltaTime;
+        }
+
+        float targetVisibility = 1.0f;
+        float transitionSpeed = 1.0f / Mathf.Max(0.08f, materializeDuration);
+        Color rimColor = s_PhantomRimColor;
+        float rimIntensity = 0f;
+
+        bool hitByNormalBeam = m_GhostTarget != null && m_GhostTarget.IsIlluminated;
+        bool hitByUVBeam = m_GhostTarget != null && m_GhostTarget.IsUVIlluminated;
+
+        if (currentState == GhostState.Hidden)
+        {
+            if (hitByUVBeam)
+            {
+                // UV Cloak Shimmer: Eerie ultraviolet/cyan silhouette while Hidden!
+                float uvPulse = 0.88f + 0.12f * Mathf.Sin(Time.time * 9.0f);
+                targetVisibility = uvCloakShimmerVisibility * uvPulse;
+                m_IsUsingHeightWipe = false;
+                transitionSpeed = 4.5f;
+                rimColor = uvShimmerRimColor;
+                rimIntensity = 1.85f;
+            }
+            else if (m_HintShimmerTimer > 0f)
+            {
+                // Stage 5: Brief 60s Search Hint spectral apparition pulse
+                float hintWave = Mathf.Sin((1.0f - (m_HintShimmerTimer / Mathf.Max(0.1f, hintFlickerDuration))) * Mathf.PI);
+                targetVisibility = 0.48f * Mathf.Clamp01(hintWave * 1.3f);
+                m_IsUsingHeightWipe = false;
+                transitionSpeed = 3.5f;
+                rimColor = s_PhantomRimColor;
+                rimIntensity = 1.6f;
+            }
+            else
+            {
+                // Dematerialize into complete invisibility (0%)
+                targetVisibility = 0.0f;
+                transitionSpeed = 1.0f / Mathf.Max(0.08f, dematerializeDuration);
+                if (currentSpectralVisibility > 0.42f)
+                {
+                    m_IsUsingHeightWipe = true;
+                }
+            }
+        }
+        else if (currentState == GhostState.Stalking)
+        {
+            // Stalking Phantom Apparition: Semi-ethereal flickering ghostly form
+            float eerieFlicker = (Mathf.PerlinNoise(Time.time * 3.8f, m_NoiseSeed) - 0.5f) * 0.14f;
+            targetVisibility = Mathf.Clamp01(stalkPhantomVisibility + eerieFlicker);
+            m_IsUsingHeightWipe = false;
+            transitionSpeed = 2.2f;
+            rimColor = s_PhantomRimColor;
+            rimIntensity = 0.95f;
+        }
+        else
+        {
+            // WatchingPlayer or Fleeing -> Full Bottom-Up Supernatural Materialization to 100%!
+            targetVisibility = 1.0f;
+            transitionSpeed = 1.0f / Mathf.Max(0.08f, materializeDuration);
+            if (currentSpectralVisibility < 0.98f)
+            {
+                m_IsUsingHeightWipe = true;
+                rimIntensity = (1.0f - currentSpectralVisibility) * 1.4f;
+            }
+            else
+            {
+                m_IsUsingHeightWipe = false;
+            }
+        }
+
+        // Anti-Frustration Beam Burn-Lock: Normal beam burns away any cloak!
+        if (hitByNormalBeam && currentState != GhostState.Hidden)
+        {
+            targetVisibility = 1.0f;
+        }
+
+        currentSpectralVisibility = Mathf.MoveTowards(currentSpectralVisibility, targetVisibility, transitionSpeed * Time.deltaTime);
+        PushSpectralStateToTarget(currentSpectralVisibility, m_IsUsingHeightWipe, rimColor, rimIntensity);
+    }
+
+    private void PushSpectralStateToTarget(float visibility, bool useWipe, Color rimColor, float rimIntensity)
+    {
+        if (m_GhostTarget != null)
+        {
+            m_GhostTarget.SetSpectralState(visibility, useWipe, rimColor, rimIntensity);
+        }
+    }
+
+    // =========================================================================
+    // STAGE 3: UV TRACE POOL (FOOTPRINTS, WALL-PHASE RIFTS & RESIDUAL RINGS)
+    // =========================================================================
     private void InitializeTracePool()
     {
+        if (m_TracePool.Count > 0)
+            return;
+
         GameObject containerObj = new GameObject($"{gameObject.name}_UVTracePool");
         m_TracePoolContainer = containerObj.transform;
 
-        for (int i = 0; i < tracePoolSize; i++)
+        int poolCount = Mathf.Max(8, tracePoolSize);
+        for (int i = 0; i < poolCount; i++)
         {
             GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            quad.name = $"UV_GhostFootprint_{i + 1}";
+            quad.name = $"UV_GhostTrace_{i + 1}";
             quad.transform.SetParent(m_TracePoolContainer, false);
             quad.transform.localScale = new Vector3(0.22f, 0.32f, 1.0f);
 
-            // Remove collider from footprint quad so it never interferes with physics or movement
             Collider quadCollider = quad.GetComponent<Collider>();
             if (quadCollider != null)
             {
@@ -302,6 +503,16 @@ public class GhostAI : MonoBehaviour
             quad.SetActive(false);
             m_TracePool.Add(trace);
         }
+    }
+
+    private GhostTrace GetNextPooledTrace()
+    {
+        if (m_TracePool.Count == 0)
+            return null;
+
+        GhostTrace trace = m_TracePool[m_NextTracePoolIndex];
+        m_NextTracePoolIndex = (m_NextTracePoolIndex + 1) % m_TracePool.Count;
+        return trace;
     }
 
     private void UpdateTraceTrail(Vector3 movementDirection)
@@ -329,20 +540,97 @@ public class GhostAI : MonoBehaviour
         m_NextFootIsRight = !m_NextFootIsRight;
 
         Vector3 stepWorldPos = transform.position + (rightFlat * (0.11f * footSideSign));
-
-        // Find exact floor surface below the ghost so the print sits 1.5cm above the floor
         float floorY = FindFloorHeightAt(stepWorldPos);
         stepWorldPos.y = floorY + 0.015f;
 
-        // Rotate quad flat onto the floor (90 deg X) pointing along the ghost's travel direction
         Quaternion stepRotation = Quaternion.LookRotation(forwardFlat, Vector3.up) * Quaternion.Euler(90f, 0f, 0f);
 
-        GhostTrace pooledTrace = m_TracePool[m_NextTracePoolIndex];
-        m_NextTracePoolIndex = (m_NextTracePoolIndex + 1) % m_TracePool.Count;
-
+        GhostTrace pooledTrace = GetNextPooledTrace();
         if (pooledTrace != null)
         {
-            pooledTrace.ActivateAt(stepWorldPos, stepRotation, traceLifetimeSeconds);
+            pooledTrace.ActivateTrace(
+                stepWorldPos,
+                stepRotation,
+                Vector3.up,
+                new Vector3(0.22f, 0.32f, 1.0f),
+                traceLifetimeSeconds,
+                GhostTrace.TraceVisualType.Footprint,
+                footprintUVColor
+            );
+        }
+    }
+
+    private void SpawnEscapeOriginRing(Vector3 worldPos)
+    {
+        if (!leaveEscapeOriginMark || m_TracePool.Count == 0)
+            return;
+
+        float floorY = FindFloorHeightAt(worldPos);
+        Vector3 ringPos = new Vector3(worldPos.x, floorY + 0.018f, worldPos.z);
+        Quaternion flatRot = Quaternion.Euler(90f, 0f, 0f);
+
+        GhostTrace trace = GetNextPooledTrace();
+        if (trace != null)
+        {
+            trace.ActivateTrace(
+                ringPos,
+                flatRot,
+                Vector3.up,
+                new Vector3(0.55f, 0.55f, 1.0f),
+                wallMarkLifetimeSeconds,
+                GhostTrace.TraceVisualType.ResidualRing,
+                footprintUVColor
+            );
+        }
+    }
+
+    private void TrySpawnWallPhaseMark(bool isEnteringWall)
+    {
+        if (!leaveWallPhaseUVMarks || m_TracePool.Count == 0)
+            return;
+
+        if (Time.time - m_LastWallMarkTime < 0.25f)
+            return;
+
+        Vector3 chestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
+        Vector3 travelDir = m_LastPathForward.sqrMagnitude > 0.001f ? m_LastPathForward.normalized : transform.forward;
+        travelDir.y = 0f;
+        if (travelDir.sqrMagnitude < 0.001f)
+            travelDir = Vector3.forward;
+        else
+            travelDir.Normalize();
+
+        // When entering a wall, cast forward from slightly behind; when exiting, cast backward toward the wall we just left!
+        Vector3 rayDir = isEnteringWall ? travelDir : -travelDir;
+        Vector3 rayStart = chestCenter - (rayDir * 0.85f);
+
+        if (Physics.Raycast(rayStart, rayDir, out RaycastHit hit, 1.9f, obstacleLayers, QueryTriggerInteraction.Ignore))
+        {
+            if (hit.collider != null && !hit.collider.transform.IsChildOf(transform))
+            {
+                // Make sure we hit a vertical wall rather than the floor
+                if (Mathf.Abs(hit.normal.y) < 0.45f)
+                {
+                    m_LastWallMarkTime = Time.time;
+                    Vector3 wallSurfacePos = hit.point + hit.normal * 0.02f;
+                    Quaternion wallRot = Quaternion.LookRotation(-hit.normal, Vector3.up);
+                    Vector3 riftScale = new Vector3(wallMarkSize, wallMarkSize * 1.25f, 1.0f);
+
+                    GhostTrace trace = GetNextPooledTrace();
+                    if (trace != null)
+                    {
+                        trace.ActivateTrace(
+                            wallSurfacePos,
+                            wallRot,
+                            hit.normal,
+                            riftScale,
+                            wallMarkLifetimeSeconds,
+                            GhostTrace.TraceVisualType.WallPhaseRift,
+                            wallMarkUVColor
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -357,10 +645,12 @@ public class GhostAI : MonoBehaviour
             }
         }
 
-        // Fallback assuming capsule center is ~1.0m above the floor
         return m_BaseYPosition - 0.98f;
     }
 
+    // =========================================================================
+    // SUPERNATURAL WALL-PHASING DETECTION
+    // =========================================================================
     private void UpdateWallPhaseState()
     {
         if (!enableWallPhasingEffect)
@@ -378,7 +668,13 @@ public class GhostAI : MonoBehaviour
 
         if (isPhasingThroughWall && !m_WasPhasingLastFrame)
         {
-            Debug.Log($"[{gameObject.name}] Phasing through solid wall (Spectral Shift active)!");
+            Debug.Log($"[{gameObject.name}] Phasing through solid wall (Spectral Shift + UV Wall Rift spawned)!");
+            TrySpawnWallPhaseMark(isEnteringWall: true);
+        }
+        else if (!isPhasingThroughWall && m_WasPhasingLastFrame)
+        {
+            // Also leave an exit rift mark on the far side of the wall!
+            TrySpawnWallPhaseMark(isEnteringWall: false);
         }
         m_WasPhasingLastFrame = isPhasingThroughWall;
 
@@ -461,12 +757,34 @@ public class GhostAI : MonoBehaviour
         return false;
     }
 
+    // =========================================================================
+    // AI STATE UPDATES (HIDDEN, STALKING, WATCHING, FLEEING + STRUGGLE)
+    // =========================================================================
     private void UpdateHidden()
     {
         if (triggerOnFlashlightHit && m_GhostTarget != null && m_GhostTarget.IsIlluminated)
         {
-            TriggerFakeEscape("Flashlight beam spotted the ghost!");
+            TriggerFakeEscape("Normal Flashlight beam spotted the hidden ghost!");
             return;
+        }
+
+        // Stage 1: UV Cloak Shimmer -> Spook after uvDisturbDuration if player holds UV on her
+        if (m_GhostTarget != null && m_GhostTarget.IsUVIlluminated)
+        {
+            if (disturbWithUVBeam)
+            {
+                m_UVExposureTimer += Time.deltaTime;
+                if (m_UVExposureTimer >= uvDisturbDuration)
+                {
+                    m_UVExposureTimer = 0f;
+                    TriggerFakeEscape("UV Flashlight exposed the hidden ghost!");
+                    return;
+                }
+            }
+        }
+        else
+        {
+            m_UVExposureTimer = Mathf.Max(0f, m_UVExposureTimer - Time.deltaTime * 2.0f);
         }
 
         if (playerHead != null)
@@ -476,7 +794,7 @@ public class GhostAI : MonoBehaviour
             {
                 if (!requireLineOfSightForProximity || HasLineOfSightToPlayer())
                 {
-                    TriggerFakeEscape("Player spotted the ghost at close range!");
+                    TriggerFakeEscape("Player approached hiding spot at close range!");
                     return;
                 }
             }
@@ -499,7 +817,7 @@ public class GhostAI : MonoBehaviour
         m_StalkTimer = 0f;
         m_BaseYPosition = transform.position.y;
         m_LastTraceDropPosition = transform.position;
-        Debug.Log($"[{gameObject.name}] Player hasn't found ghost for {stalkStartDelaySeconds:F0}s -> Entering STALKING state (creeping closer)!");
+        Debug.Log($"[{gameObject.name}] Player hasn't found ghost for {stalkStartDelaySeconds:F0}s -> Entering STALKING Phantom state!");
     }
 
     private void UpdateStalking()
@@ -545,7 +863,7 @@ public class GhostAI : MonoBehaviour
         }
         else
         {
-            ApplyHoverOffset(m_BaseYPosition);
+            ApplyHoverAndStruggleOffset(m_BaseYPosition);
         }
 
         m_StalkTimer += Time.deltaTime;
@@ -604,7 +922,7 @@ public class GhostAI : MonoBehaviour
     {
         if (playerHead != null)
         {
-            Vector3 directionToPlayer = playerHead.position - transform.position;
+            Vector3 directionToPlayer = playerHead.position - m_CorePathPosition;
             directionToPlayer.y = 0f;
 
             if (directionToPlayer.sqrMagnitude > 0.001f)
@@ -614,7 +932,14 @@ public class GhostAI : MonoBehaviour
             }
         }
 
-        ApplyHoverOffset(m_BaseYPosition);
+        // Keep core spot anchored while applying hover + Stage 2 beam struggle vibration!
+        Vector3 struggleJitter = CalculateBeamStruggleOffset();
+        float hoverY = m_BaseYPosition + CalculateHoverAndShimmerOffset();
+        transform.position = new Vector3(
+            m_CorePathPosition.x + struggleJitter.x,
+            hoverY + struggleJitter.y,
+            m_CorePathPosition.z + struggleJitter.z
+        );
 
         bool isIlluminated = m_GhostTarget != null && m_GhostTarget.IsIlluminated;
         if (isIlluminated)
@@ -636,7 +961,6 @@ public class GhostAI : MonoBehaviour
         m_WatchTimer -= Time.deltaTime;
         if (m_WatchTimer <= 0f)
         {
-            Debug.Log($"[{gameObject.name}] Behaviour A stare finished! Now fleeing...");
             StartFleeing();
         }
     }
@@ -649,107 +973,161 @@ public class GhostAI : MonoBehaviour
             return;
         }
 
+        Vector3 targetPos = m_TargetSpot.Position;
         bool isIlluminated = m_GhostTarget != null && m_GhostTarget.IsIlluminated;
+        float captureProgress = m_GhostTarget != null ? m_GhostTarget.CurrentProgressNormalized : 0f;
 
-        // 1. Reactive Flashlight Panic & Juke Check
-        float speedMultiplier = Mathf.Lerp(1f, wallPhaseSpeedMultiplier, m_CurrentWallPhaseBlend);
-        float weaveMultiplier = 1.0f;
+        // 1. Reactive Flashlight Panic + Stage 2 Beam-Lock Slowdown!
+        float activeSpeed = fleeSpeed;
+        float activeWeaveAmp = weaveAmplitude;
 
         if (enablePanicDodge && isIlluminated)
         {
-            speedMultiplier *= illuminatedSpeedMultiplier;
-            weaveMultiplier = illuminatedWeaveMultiplier;
+            activeSpeed *= illuminatedSpeedMultiplier;
+            activeWeaveAmp *= illuminatedWeaveMultiplier;
 
             m_TimeUnderBeamWhileFleeing += Time.deltaTime;
             if (m_TimeUnderBeamWhileFleeing >= jukeIntervalUnderBeam)
             {
                 m_TimeUnderBeamWhileFleeing = 0f;
-                m_JukeSign *= -1f;
-                Debug.Log($"[{gameObject.name}] Panic Juke! Ghost flipped dodge direction to escape the flashlight beam!");
+                m_JukeSign = -m_JukeSign;
             }
         }
         else
         {
-            m_TimeUnderBeamWhileFleeing = Mathf.Max(0f, m_TimeUnderBeamWhileFleeing - Time.deltaTime * 2.0f);
+            m_TimeUnderBeamWhileFleeing = Mathf.Max(0f, m_TimeUnderBeamWhileFleeing - Time.deltaTime * 2f);
         }
 
-        // 2. Advance Invisible Core Path Position
-        Vector3 targetPos = m_TargetSpot.Position;
-        Vector3 toTarget = targetPos - m_CorePathPosition;
-        float remainingDistance = toTarget.magnitude;
+        // Smoothly curve dodge side changes instead of snapping left/right in 1 frame
+        m_SmoothedJukeSign = Mathf.SmoothDamp(m_SmoothedJukeSign, m_JukeSign, ref m_JukeSignVelocity, 0.48f);
 
-        Vector3 flatToTarget = new Vector3(toTarget.x, 0f, toTarget.z);
-        if (flatToTarget.sqrMagnitude > 0.0001f)
+        // Stage 2: As capture progress rises (0% -> 100%), the beam drags down her speed ("Beam-Lock")!
+        if (enableBeamStruggle && captureProgress > 0.01f)
         {
-            m_LastPathForward = flatToTarget.normalized;
+            float beamDragMultiplier = Mathf.Lerp(1.0f, 1.0f - maxBeamSlowdownFactor, captureProgress);
+            activeSpeed *= beamDragMultiplier;
+            activeWeaveAmp *= Mathf.Lerp(1.0f, 0.35f, captureProgress);
         }
 
-        float currentSpeed = fleeSpeed * speedMultiplier;
-        m_CorePathPosition = Vector3.MoveTowards(m_CorePathPosition, targetPos, currentSpeed * Time.deltaTime);
+        activeSpeed *= Mathf.Lerp(1f, wallPhaseSpeedMultiplier, m_CurrentWallPhaseBlend);
 
-        // 3. Calculate Organic Lateral Weave Offset
+        // 2. Advance Core Path Toward Hiding Spot
+        m_CorePathPosition = Vector3.MoveTowards(m_CorePathPosition, targetPos, activeSpeed * Time.deltaTime);
+
+        Vector3 remainingToTarget = targetPos - m_CorePathPosition;
+        Vector3 flatRemaining = new Vector3(remainingToTarget.x, 0f, remainingToTarget.z);
+        float remainingFlatDistance = flatRemaining.magnitude;
+
+        if (flatRemaining.sqrMagnitude > 0.0001f)
+        {
+            m_LastPathForward = flatRemaining / remainingFlatDistance;
+        }
+
+        // 3. Smooth Floating S-Curve Lateral Glide (Critically Damped, Zero Sharp Corners)
         float desiredLateralOffset = 0f;
-        if (enableEvasiveWeaving)
+        m_FleeElapsedSeconds += Time.deltaTime;
+        if (enableEvasiveWeaving && remainingFlatDistance > 0.05f)
         {
-            m_FleePhaseTime += Time.deltaTime * weaveFrequency * weaveMultiplier;
+            m_FleePhaseTime += Time.deltaTime * weaveFrequency * Mathf.PI * 2f;
 
-            float startTaper = Mathf.Clamp01(m_FleePhaseTime / 1.0f);
-            float endTaper = arrivalTaperDistance > 0.01f
-                ? Mathf.Clamp01(remainingDistance / arrivalTaperDistance)
+            float sineWave = Mathf.Sin(m_FleePhaseTime);
+            float perlinWave = (Mathf.PerlinNoise(Time.time * weaveFrequency * 0.65f, m_NoiseSeed) - 0.5f) * 2.0f;
+            float combinedWave = Mathf.Lerp(sineWave, perlinWave, erraticNoiseBlend) * m_SmoothedJukeSign;
+
+            float arrivalTaper = arrivalTaperDistance > 0.01f
+                ? Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(remainingFlatDistance / arrivalTaperDistance))
                 : 1.0f;
+            float startRamp = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(m_FleeElapsedSeconds / 0.65f));
+            float wallWeaveDamping = Mathf.Lerp(1.0f, 0.25f, m_CurrentWallPhaseBlend);
 
-            float wallPassDamping = 1.0f - (m_CurrentWallPhaseBlend * 0.75f);
-            float envelope = startTaper * endTaper * wallPassDamping;
-
-            float sineWave = Mathf.Sin(m_FleePhaseTime) * m_JukeSign;
-            float perlinWave = (Mathf.PerlinNoise(m_NoiseSeed, m_FleePhaseTime * 0.6f) - 0.5f) * 2.0f;
-            float combinedWave = Mathf.Lerp(sineWave, perlinWave, erraticNoiseBlend);
-
-            desiredLateralOffset = combinedWave * weaveAmplitude * weaveMultiplier * envelope;
+            desiredLateralOffset = combinedWave * activeWeaveAmp * arrivalTaper * startRamp * wallWeaveDamping;
         }
 
-        m_CurrentLateralOffset = Mathf.MoveTowards(
+        float effectiveSmoothTime = Mathf.Max(0.10f, weaveSmoothTime);
+        m_CurrentLateralOffset = Mathf.SmoothDamp(
             m_CurrentLateralOffset,
             desiredLateralOffset,
-            lateralDartResponsiveness * weaveMultiplier * Time.deltaTime
+            ref m_LateralOffsetVelocity,
+            effectiveSmoothTime
         );
 
-        // 4. Combine Core Position + Perpendicular Lateral Offset + Vertical Hover & Wall Shimmer
+        // 4. Final World Position (Core Path + Smooth Glide + Hover + Stage 2 Struggle Shiver)
         Vector3 pathRight = Vector3.Cross(Vector3.up, m_LastPathForward).normalized;
-        float verticalOffset = CalculateHoverAndShimmerOffset();
+        float hoverY = m_CorePathPosition.y + CalculateHoverAndShimmerOffset();
+        Vector3 struggleJitter = CalculateBeamStruggleOffset();
 
-        Vector3 previousPosition = transform.position;
-        Vector3 nextPosition = m_CorePathPosition + (pathRight * m_CurrentLateralOffset) + (Vector3.up * verticalOffset);
-        transform.position = nextPosition;
+        Vector3 newVisualPos = new Vector3(
+            m_CorePathPosition.x + (pathRight.x * m_CurrentLateralOffset) + struggleJitter.x,
+            hoverY + struggleJitter.y,
+            m_CorePathPosition.z + (pathRight.z * m_CurrentLateralOffset) + struggleJitter.z
+        );
+        transform.position = newVisualPos;
 
-        // 5. Rotate Smoothly Into the Actual Curved Movement Direction & Drop UV Footprints
-        Vector3 actualVelocityDir = nextPosition - previousPosition;
-        actualVelocityDir.y = 0f;
-        if (actualVelocityDir.sqrMagnitude > 0.00001f)
+        // 5. Smooth Forward-Biased Heading (Prevents whipping 70 degrees left/right) & UV Trail
+        Vector3 gentleGlideDir = m_LastPathForward + (pathRight * Mathf.Clamp(m_LateralOffsetVelocity * 0.14f, -0.32f, 0.32f));
+        if (gentleGlideDir.sqrMagnitude > 0.0001f)
         {
-            Vector3 moveNormal = actualVelocityDir.normalized;
-            Quaternion targetRotation = Quaternion.LookRotation(moveNormal);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
-            UpdateTraceTrail(moveNormal);
+            Vector3 normalizedDir = gentleGlideDir.normalized;
+            Quaternion targetRotation = Quaternion.LookRotation(normalizedDir);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * 0.75f * Time.deltaTime);
+            UpdateTraceTrail(normalizedDir);
         }
         else
         {
             UpdateTraceTrail(m_LastPathForward);
         }
 
-        // 6. Check Arrival at Hiding Spot
+        // 6. Check Arrival at Hiding Spot (+ Stage 1 Anti-Frustration Beam Burn-Lock!)
         if (Vector3.Distance(m_CorePathPosition, targetPos) <= 0.1f)
         {
+            bool heldInFlashlightBeam = preventCloakWhileIlluminated
+                && m_GhostTarget != null
+                && m_GhostTarget.IsRecentlyIlluminated;
+
+            if (heldInFlashlightBeam && hidingSpots.Count > 1)
+            {
+                m_PreviousSpot = m_CurrentSpot;
+                m_CurrentSpot = m_TargetSpot;
+                Debug.Log($"[{gameObject.name}] Reached '{m_CurrentSpot.SpotName}' while illuminated! Beam Burn-Lock prevents cloaking — bolting to a new spot!");
+                StartFleeing();
+                return;
+            }
+
             m_PreviousSpot = m_CurrentSpot;
             m_CurrentSpot = m_TargetSpot;
             m_CorePathPosition = m_CurrentSpot.Position;
             transform.position = m_CurrentSpot.Position;
             m_BaseYPosition = m_CurrentSpot.Position.y;
             m_CurrentLateralOffset = 0f;
+            m_LateralOffsetVelocity = 0f;
             m_HiddenTimer = 0f;
+            m_UVExposureTimer = 0f;
             currentState = GhostState.Hidden;
-            Debug.Log($"[{gameObject.name}] Ghost safely reached tactical hiding spot: {m_CurrentSpot.SpotName}. Hidden again.");
+            Debug.Log($"[{gameObject.name}] Ghost safely reached hiding spot '{m_CurrentSpot.SpotName}' — dematerializing into cloak.");
         }
+    }
+
+    // =========================================================================
+    // STAGE 2: BEAM STRUGGLE VIBRATION & HOVER HELPERS
+    // =========================================================================
+    private Vector3 CalculateBeamStruggleOffset()
+    {
+        if (!enableBeamStruggle || m_GhostTarget == null || !m_GhostTarget.IsIlluminated)
+            return Vector3.zero;
+
+        float progress = m_GhostTarget.CurrentProgressNormalized;
+        if (progress <= 0.15f)
+            return Vector3.zero;
+
+        // Quadratic ramp so she glides cleanly at first and shivers intensely right before the 3s capture!
+        float ramp = (progress - 0.15f) / 0.85f;
+        float strength = struggleTrembleAmplitude * (ramp * ramp);
+        float t = Time.time * struggleTrembleFrequency;
+        return new Vector3(
+            Mathf.Sin(t * 1.13f) * strength,
+            Mathf.Cos(t * 1.71f) * (strength * 0.45f),
+            Mathf.Sin(t * 0.89f + 1.7f) * strength
+        );
     }
 
     private float CalculateHoverAndShimmerOffset()
@@ -762,12 +1140,67 @@ public class GhostAI : MonoBehaviour
         return normalHover + phaseShimmer;
     }
 
-    private void ApplyHoverOffset(float baseY)
+    private void ApplyHoverAndStruggleOffset(float baseY)
     {
+        Vector3 jitter = CalculateBeamStruggleOffset();
         float hoverY = baseY + CalculateHoverAndShimmerOffset();
-        transform.position = new Vector3(transform.position.x, hoverY, transform.position.z);
+        transform.position = new Vector3(transform.position.x + jitter.x, hoverY + jitter.y, transform.position.z + jitter.z);
     }
 
+    // =========================================================================
+    // STAGE 5: 60-SECOND SEARCH HINT EMISSION
+    // =========================================================================
+    /// <summary>
+    /// Called by RoundManager when the player hasn't spotted the ghost for 60 seconds.
+    /// Pulses a brief spectral silhouette shimmer and drops UV breadcrumb rings leading toward her!
+    /// </summary>
+    [ContextMenu("Emit Search Hint Now")]
+    public void EmitSearchHint()
+    {
+        if (currentState == GhostState.Captured)
+            return;
+
+        m_HintShimmerTimer = hintFlickerDuration;
+
+        if (m_TracePool.Count > 0 && hintBreadcrumbCount > 0)
+        {
+            Vector3 ghostPos = transform.position;
+            Vector3 playerPos = playerHead != null ? playerHead.position : (ghostPos + Vector3.forward * 4f);
+            Vector3 toGhostFlat = new Vector3(ghostPos.x - playerPos.x, 0f, ghostPos.z - playerPos.z);
+            float totalDist = toGhostFlat.magnitude;
+            Vector3 dirToGhost = totalDist > 0.1f ? (toGhostFlat / totalDist) : Vector3.forward;
+
+            // Place a breadcrumb trail starting ~3.5m away from the ghost leading right to her hiding spot!
+            float trailLength = Mathf.Min(3.8f, Mathf.Max(1.2f, totalDist * 0.65f));
+            for (int i = 0; i < hintBreadcrumbCount; i++)
+            {
+                float frac = hintBreadcrumbCount > 1 ? (float)i / (hintBreadcrumbCount - 1) : 1.0f;
+                float backOffset = Mathf.Lerp(trailLength, 0.25f, frac);
+                Vector3 crumbPos = ghostPos - (dirToGhost * backOffset);
+                crumbPos.y = FindFloorHeightAt(crumbPos) + 0.018f;
+
+                GhostTrace trace = GetNextPooledTrace();
+                if (trace != null)
+                {
+                    trace.ActivateTrace(
+                        crumbPos,
+                        Quaternion.Euler(90f, 0f, 0f),
+                        Vector3.up,
+                        new Vector3(0.45f, 0.45f, 1.0f),
+                        wallMarkLifetimeSeconds,
+                        GhostTrace.TraceVisualType.ResidualRing,
+                        wallMarkUVColor
+                    );
+                }
+            }
+        }
+
+        Debug.Log($"[{gameObject.name}] *** SEARCH HINT EMITTED! *** Brief spectral shimmer + {hintBreadcrumbCount} UV breadcrumb rings spawned toward '{(m_CurrentSpot != null ? m_CurrentSpot.SpotName : "Ghost")}'.");
+    }
+
+    // =========================================================================
+    // FAKE ESCAPE, ROUND RESET & TACTICAL HIDING SPOT SCORING
+    // =========================================================================
     [ContextMenu("Trigger Fake Escape")]
     public void TriggerFakeEscape(string reason = "Triggered")
     {
@@ -776,7 +1209,11 @@ public class GhostAI : MonoBehaviour
 
         m_HiddenTimer = 0f;
         m_StalkTimer = 0f;
+        m_UVExposureTimer = 0f;
+        m_HintShimmerTimer = 0f;
         m_BaseYPosition = transform.position.y;
+        m_CorePathPosition = transform.position;
+
         bool chooseWatch = Random.value <= watchPlayerChance;
 
         if (chooseWatch)
@@ -785,11 +1222,11 @@ public class GhostAI : MonoBehaviour
             m_WatchTimer = watchPlayerDuration;
             m_WasIlluminatedDuringStare = false;
             m_StareBeamLostGraceTimer = stareBeamLossGraceSeconds;
-            Debug.Log($"[{gameObject.name}] {reason} -> Fake Escape [Behaviour A: Staring at player for {watchPlayerDuration:F1}s]");
+            Debug.Log($"[{gameObject.name}] {reason} -> Materializing into Fake Escape [Behaviour A: Staring for {watchPlayerDuration:F1}s]");
         }
         else
         {
-            Debug.Log($"[{gameObject.name}] {reason} -> Fake Escape [Behaviour B: Immediate Escape!]");
+            Debug.Log($"[{gameObject.name}] {reason} -> Materializing into Fake Escape [Behaviour B: Immediate Escape!]");
             StartFleeing();
         }
     }
@@ -818,8 +1255,13 @@ public class GhostAI : MonoBehaviour
 
         m_HiddenTimer = 0f;
         m_StalkTimer = 0f;
+        m_UVExposureTimer = 0f;
+        m_HintShimmerTimer = 0f;
         m_CurrentLateralOffset = 0f;
+        m_LateralOffsetVelocity = 0f;
+        m_FleeElapsedSeconds = 0f;
         m_CurrentWallPhaseBlend = 0f;
+        m_WasPhasingLastFrame = false;
         m_WasIlluminatedDuringStare = false;
         transform.localScale = m_InitialLocalScale;
 
@@ -836,28 +1278,35 @@ public class GhostAI : MonoBehaviour
         }
 
         currentState = GhostState.Hidden;
+        currentSpectralVisibility = cloakWhileHidden ? 0.0f : 1.0f;
 
         if (m_GhostTarget != null)
         {
             m_GhostTarget.ResetTarget();
+            m_GhostTarget.SetSpectralState(currentSpectralVisibility, false, s_PhantomRimColor, 0f);
         }
         else
         {
             gameObject.SetActive(true);
         }
 
-        Debug.Log($"[{gameObject.name}] Respawned at '{(m_CurrentSpot != null ? m_CurrentSpot.SpotName : "Start")}' | Speed: {fleeSpeed:F2} m/s | Weave: {weaveAmplitude:F2}m @ {weaveFrequency:F1}Hz | Stare: {watchPlayerDuration:F1}s");
+        Debug.Log($"[{gameObject.name}] Respawned (Cloaked={cloakWhileHidden}) at '{(m_CurrentSpot != null ? m_CurrentSpot.SpotName : "Start")}' | Speed: {fleeSpeed:F2} m/s | Weave: {weaveAmplitude:F2}m @ {weaveFrequency:F1}Hz | Stare: {watchPlayerDuration:F1}s");
     }
 
     private void StartFleeing()
     {
+        Vector3 escapeOrigin = transform.position;
         m_TargetSpot = GetSmartNextHidingSpot();
-        m_CorePathPosition = transform.position;
-        m_LastTraceDropPosition = transform.position;
+        m_CorePathPosition = escapeOrigin;
+        m_LastTraceDropPosition = escapeOrigin;
         m_CurrentLateralOffset = 0f;
+        m_LateralOffsetVelocity = 0f;
         m_FleePhaseTime = 0f;
+        m_FleeElapsedSeconds = 0f;
         m_TimeUnderBeamWhileFleeing = 0f;
         m_JukeSign = Random.value > 0.5f ? 1f : -1f;
+        m_SmoothedJukeSign = m_JukeSign;
+        m_JukeSignVelocity = 0f;
         m_NoiseSeed = Random.Range(0f, 100f);
 
         if (m_TargetSpot != null)
@@ -871,7 +1320,8 @@ public class GhostAI : MonoBehaviour
             Debug.Log($"[{gameObject.name}] Ghost fleeing to tactical spot: {m_TargetSpot.SpotName}");
         }
 
-        // Drop a first UV trace right where she bolted from!
+        // Stage 3: Leave a pulsing UV Residual Ring at the hiding spot she bolted from!
+        SpawnEscapeOriginRing(escapeOrigin);
         UpdateTraceTrail(m_LastPathForward);
         currentState = GhostState.Fleeing;
     }
@@ -956,7 +1406,7 @@ public class GhostAI : MonoBehaviour
 
         currentState = GhostState.Captured;
         transform.localScale = m_InitialLocalScale;
-        Debug.Log($"[{gameObject.name}] Ghost captured! AI stopped.");
+        Debug.Log($"[{gameObject.name}] Ghost captured! AI stopped while Capture Vanish plays.");
     }
 
     private void OnDrawGizmosSelected()

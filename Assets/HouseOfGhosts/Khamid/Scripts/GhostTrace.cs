@@ -5,31 +5,62 @@ using UnityEngine.Rendering;
 [DisallowMultipleComponent]
 public class GhostTrace : MonoBehaviour
 {
+    public enum TraceVisualType
+    {
+        Footprint = 0,
+        WallPhaseRift = 1,
+        ResidualRing = 2
+    }
+
     public static readonly List<GhostTrace> ActiveTraces = new List<GhostTrace>();
 
     [Header("UV Reveal Settings")]
+    [Tooltip("Shape rendered on this UV trace (Footprint, WallPhaseRift, or ResidualRing).")]
+    [SerializeField] private TraceVisualType traceType = TraceVisualType.Footprint;
+
     [Tooltip("Fluorescent color when revealed by the UV flashlight.")]
     [SerializeField] private Color uvFluorescentColor = new Color(0.15f, 1.0f, 0.78f, 1.0f);
 
     [Tooltip("How fast the trace lights up when hit by the UV beam.")]
-    [SerializeField] private float revealSpeed = 6.0f;
+    [SerializeField] private float revealSpeed = 6.5f;
 
     [Tooltip("How long (seconds) the fluorescent afterglow lingers after the UV beam moves away.")]
-    [SerializeField] private float afterglowHoldSeconds = 0.45f;
+    [SerializeField] private float afterglowHoldSeconds = 0.55f;
 
     [Tooltip("How fast the trace fades back to invisible after the UV beam moves away.")]
-    [SerializeField] private float fadeOutSpeed = 1.6f;
+    [SerializeField] private float fadeOutSpeed = 1.5f;
 
     [Header("Lifetime Settings")]
-    [Tooltip("If true, this trace never expires (useful for handprints placed manually on walls/doors).")]
+    [Tooltip("If true, this trace never expires (useful for handprints/clues placed manually in rooms).")]
     [SerializeField] private bool isPermanentTrace = false;
 
-    [Tooltip("Seconds before a dropped footprint trace expires and hides itself.")]
+    [Tooltip("Seconds before a dropped trace expires and hides itself.")]
     [SerializeField] private float traceLifetimeSeconds = 25.0f;
 
     [Header("Shader & Material Reference")]
     [SerializeField] private Material customTraceMaterial;
     [SerializeField] private Shader uvTraceShader;
+
+    [Header("Current State (Read Only)")]
+    [SerializeField] private float currentRevealAmount = 0f;
+
+    private Renderer m_Renderer;
+    private MaterialPropertyBlock m_PropBlock;
+    private Vector3 m_SurfaceNormal = Vector3.up;
+    private bool m_IsHitByUVThisFrame = false;
+    private float m_TargetStrengthThisFrame = 1f;
+    private float m_AfterglowTimer = 0f;
+    private float m_AgeTimer = 0f;
+
+    private static Material s_SharedUVTraceMaterial;
+    private static readonly int s_UVGlowColorId = Shader.PropertyToID("_UVGlowColor");
+    private static readonly int s_RevealAmountId = Shader.PropertyToID("_RevealAmount");
+    private static readonly int s_TraceShapeId = Shader.PropertyToID("_TraceShape");
+
+    public Vector3 Position => transform.position;
+    public Vector3 SurfaceNormal => m_SurfaceNormal;
+    public TraceVisualType CurrentTraceType => traceType;
+    public float CurrentRevealAmount => currentRevealAmount;
 
     public void SetTraceMaterial(Material mat)
     {
@@ -42,23 +73,6 @@ public class GhostTrace : MonoBehaviour
             m_Renderer.sharedMaterial = customTraceMaterial;
         }
     }
-
-    [Header("Current State (Read Only)")]
-    [SerializeField] private float currentRevealAmount = 0f;
-
-    private Renderer m_Renderer;
-    private MaterialPropertyBlock m_PropBlock;
-    private bool m_IsHitByUVThisFrame = false;
-    private float m_TargetStrengthThisFrame = 1f;
-    private float m_AfterglowTimer = 0f;
-    private float m_AgeTimer = 0f;
-
-    private static Material s_SharedUVTraceMaterial;
-    private static readonly int s_UVGlowColorId = Shader.PropertyToID("_UVGlowColor");
-    private static readonly int s_RevealAmountId = Shader.PropertyToID("_RevealAmount");
-
-    public Vector3 Position => transform.position;
-    public float CurrentRevealAmount => currentRevealAmount;
 
     private void OnValidate()
     {
@@ -96,7 +110,6 @@ public class GhostTrace : MonoBehaviour
 
     private void Update()
     {
-        // 1. Handle expiration for temporary footprint trail marks
         if (!isPermanentTrace)
         {
             m_AgeTimer += Time.deltaTime;
@@ -107,7 +120,6 @@ public class GhostTrace : MonoBehaviour
             }
         }
 
-        // 2. Smoothly reveal under UV beam or fade out with fluorescent afterglow
         if (m_IsHitByUVThisFrame)
         {
             m_AfterglowTimer = afterglowHoldSeconds;
@@ -141,12 +153,23 @@ public class GhostTrace : MonoBehaviour
     }
 
     /// <summary>
-    /// Spawns or repositions this trace at a floor position and rotation.
+    /// Spawns or repositions a pooled UV trace (Footprint, Wall-Phase Rift, or Hiding/Hint Ring).
     /// </summary>
-    public void ActivateAt(Vector3 worldPos, Quaternion worldRot, float lifetime)
+    public void ActivateTrace(
+        Vector3 worldPos,
+        Quaternion worldRot,
+        Vector3 surfaceNormal,
+        Vector3 scale,
+        float lifetime,
+        TraceVisualType visualType,
+        Color glowColor)
     {
         transform.SetPositionAndRotation(worldPos, worldRot);
+        transform.localScale = scale;
+        m_SurfaceNormal = surfaceNormal.sqrMagnitude > 0.001f ? surfaceNormal.normalized : Vector3.up;
         traceLifetimeSeconds = lifetime;
+        traceType = visualType;
+        uvFluorescentColor = glowColor;
         isPermanentTrace = false;
         m_AgeTimer = 0f;
         currentRevealAmount = 0f;
@@ -209,6 +232,7 @@ public class GhostTrace : MonoBehaviour
         m_Renderer.GetPropertyBlock(m_PropBlock);
         m_PropBlock.SetColor(s_UVGlowColorId, uvFluorescentColor);
         m_PropBlock.SetFloat(s_RevealAmountId, reveal01);
+        m_PropBlock.SetFloat(s_TraceShapeId, (float)traceType);
         m_Renderer.SetPropertyBlock(m_PropBlock);
     }
 
@@ -216,5 +240,6 @@ public class GhostTrace : MonoBehaviour
     {
         Gizmos.color = new Color(0.55f, 0.1f, 1.0f, 0.7f);
         Gizmos.DrawWireSphere(transform.position, 0.12f);
+        Gizmos.DrawRay(transform.position, m_SurfaceNormal * 0.2f);
     }
 }

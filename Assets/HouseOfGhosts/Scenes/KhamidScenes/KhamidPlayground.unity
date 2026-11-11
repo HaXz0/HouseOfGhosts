@@ -582,12 +582,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -602,7 +614,7 @@ CapsuleCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 97822597}
-  m_Material: {fileID: 0}
+  m_Material: {fileID: 2078006679}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -704,24 +716,38 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostAI
   currentState: 0
   isPhasingThroughWall: 0
+  currentSpectralVisibility: 0
+  cloakWhileHidden: 1
+  materializeDuration: 0.45
+  dematerializeDuration: 0.4
+  preventCloakWhileIlluminated: 1
+  stalkPhantomVisibility: 0.62
+  uvCloakShimmerVisibility: 0.38
+  uvShimmerRimColor: {r: 0.58, g: 0.22, b: 1, a: 1}
+  disturbWithUVBeam: 1
+  uvDisturbDuration: 1.2
+  enableBeamStruggle: 1
+  maxBeamSlowdownFactor: 0.45
+  struggleTrembleAmplitude: 0.02
+  struggleTrembleFrequency: 26
   watchPlayerChance: 0.5
   watchPlayerDuration: 2
   abortStareOnLostBeam: 1
   stareBeamLossGraceSeconds: 0.25
   fleeSpeed: 2.8
-  rotationSpeed: 6
+  rotationSpeed: 8
   hoverAmplitude: 0.08
   hoverFrequency: 2.5
   enableEvasiveWeaving: 1
-  weaveAmplitude: 0.55
-  weaveFrequency: 3
-  erraticNoiseBlend: 0.35
-  arrivalTaperDistance: 1.5
-  lateralDartResponsiveness: 5.5
+  weaveAmplitude: 0.3
+  weaveFrequency: 0.55
+  weaveSmoothTime: 0.42
+  erraticNoiseBlend: 0.12
+  arrivalTaperDistance: 1.6
   enablePanicDodge: 1
-  illuminatedSpeedMultiplier: 1.25
-  illuminatedWeaveMultiplier: 1.5
-  jukeIntervalUnderBeam: 1
+  illuminatedSpeedMultiplier: 1.15
+  illuminatedWeaveMultiplier: 1.2
+  jukeIntervalUnderBeam: 2.2
   enableWallPhasingEffect: 1
   wallDetectRadius: 0.28
   wallLookAheadDistance: 0.35
@@ -732,7 +758,13 @@ MonoBehaviour:
   leaveUVTraceTrail: 1
   traceStepSpacing: 1
   traceLifetimeSeconds: 25
-  tracePoolSize: 18
+  footprintUVColor: {r: 0.15, g: 1, b: 0.78, a: 1}
+  leaveWallPhaseUVMarks: 1
+  wallMarkSize: 0.55
+  wallMarkLifetimeSeconds: 32
+  wallMarkUVColor: {r: 0.38, g: 0.72, b: 1, a: 1}
+  leaveEscapeOriginMark: 1
+  tracePoolSize: 24
   uvTraceMaterial: {fileID: 2100000, guid: e841030163c7d734ebb9f9006c9c4be7, type: 2}
   enableStalking: 1
   stalkStartDelaySeconds: 12
@@ -740,6 +772,8 @@ MonoBehaviour:
   stalkStopDistance: 3
   stalkSpottedViewAngle: 42
   maxStalkDurationSeconds: 10
+  hintFlickerDuration: 1.6
+  hintBreadcrumbCount: 4
   triggerProximityDistance: 2.5
   requireLineOfSightForProximity: 1
   obstacleLayers:
@@ -911,12 +945,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -1167,12 +1213,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -1430,12 +1488,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -1813,12 +1883,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -1957,12 +2039,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -2325,12 +2419,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -2469,12 +2575,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -3022,12 +3140,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -3471,12 +3601,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -3615,12 +3757,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -4252,12 +4406,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -4396,12 +4562,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -4540,12 +4718,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -4979,12 +5169,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -5195,6 +5397,7 @@ GameObject:
   - component: {fileID: 1243551062}
   - component: {fileID: 1243551061}
   - component: {fileID: 1243551063}
+  - component: {fileID: 1243551064}
   m_Layer: 0
   m_Name: RoundManager
   m_TagString: Untagged
@@ -5217,12 +5420,15 @@ MonoBehaviour:
   totalRounds: 6
   atticUnlockCaptureCount: 3
   respawnDelaySeconds: 3
+  enableSearchHints: 1
+  searchHintDelaySeconds: 60
+  repeatHintIntervalSeconds: 30
   round1FleeSpeed: 2.8
   speedIncreasePerRound: 0.35
-  round1WeaveAmplitude: 0.55
-  weaveAmplitudeIncreasePerRound: 0.08
-  round1WeaveFrequency: 3
-  weaveFrequencyIncreasePerRound: 0.3
+  round1WeaveAmplitude: 0.3
+  weaveAmplitudeIncreasePerRound: 0.04
+  round1WeaveFrequency: 0.55
+  weaveFrequencyIncreasePerRound: 0.06
   round1WatchDuration: 2
   watchDurationDecreasePerRound: 0.2
   minimumWatchDuration: 0.5
@@ -5231,6 +5437,7 @@ MonoBehaviour:
   minimumWatchChance: 0.15
   currentRound: 1
   capturesCompleted: 0
+  secondsWithoutSpottingGhost: 0
   isAtticUnlocked: 0
   isGameWon: 0
   isGameLost: 0
@@ -5240,6 +5447,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onRoundStarted:
+    m_PersistentCalls:
+      m_Calls: []
+  onSearchHintTriggered:
     m_PersistentCalls:
       m_Calls: []
   onAtticUnlocked:
@@ -5298,6 +5508,38 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
+--- !u!114 &1243551064
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1243551060}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c731262496f0a067bee2c0339f0f7eba, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DangerMeterTensionEffect
+  previewDangerOverride: 0
+  currentDangerStrength: 0
+  enableTensionEffect: 1
+  dangerVignetteColor: {r: 0.55, g: 0.03, b: 0.06, a: 1}
+  outerCornerShadowColor: {r: 0.05, g: 0, b: 0.01, a: 1}
+  maxVignetteIntensity: 0.72
+  vignetteSmoothness: 0.55
+  dangerStartThreshold: 0.95
+  transitionSmoothSpeed: 4
+  enableHeartbeatPulse: 1
+  minPulseFrequency: 1.4
+  maxPulseFrequency: 3.8
+  pulseIntensityBoost: 0.14
+  enableColdDesaturation: 1
+  coldVeilColor: {r: 0.08, g: 0.14, b: 0.22, a: 1}
+  maxColdVeilStrength: 0.2
+  vignetteMaterial: {fileID: 2100000, guid: 9f3b2816c4d24e21ae3d7f92b1c85d46, type: 2}
+  vignetteShader: {fileID: 4800000, guid: 8e4c1927a5b34f109d2c6e81a0b74c35, type: 3}
+  dangerMeter: {fileID: 1243551063}
+  targetCamera: {fileID: 0}
 --- !u!1 &1249617917
 GameObject:
   m_ObjectHideFlags: 0
@@ -6218,12 +6460,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -6698,12 +6952,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -7850,12 +8116,24 @@ MonoBehaviour:
   dummyRespawnDelay: 3
   requiredCaptureDuration: 3
   beamLossGracePeriod: 0.2
-  instantResetOnLoseBeam: 1
-  decaySpeed: 2
+  instantResetOnLoseBeam: 0
+  decaySpeed: 0.9
   showVisualColorFeedback: 1
+  spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
+  spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
   wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
+  enableCaptureVanish: 1
+  captureVanishDuration: 0.38
+  captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
+  captureRiseHeight: 0.35
+  enableCaptureParticles: 1
+  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  playParticlesOnTestDummies: 1
+  vfxHeightOffset: 0
+  vfxScaleMultiplier: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -8055,6 +8333,19 @@ Transform:
   m_Children: []
   m_Father: {fileID: 214038198}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!134 &2078006679
+PhysicsMaterial:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: 
+  serializedVersion: 2
+  m_DynamicFriction: 0.6
+  m_StaticFriction: 0.6
+  m_Bounciness: 0
+  m_FrictionCombine: 0
+  m_BounceCombine: 0
 --- !u!1 &2086905488
 GameObject:
   m_ObjectHideFlags: 0

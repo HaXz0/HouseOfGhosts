@@ -12,7 +12,7 @@ public class FlashlightCaptureDetector : MonoBehaviour
     [SerializeField] private Light beamLight;
 
     [Header("UV & Capture Rules")]
-    [Tooltip("If false (recommended), only Normal Mode captures the ghost; UV Mode only reveals hidden Ghost Traces.")]
+    [Tooltip("If false (recommended), only Normal Mode captures the ghost; UV Mode reveals Ghost Traces and UV Cloak Shimmer.")]
     [SerializeField] private bool allowGhostCaptureInUVMode = false;
 
     [Tooltip("Allows pressing the 'U' key on the PC keyboard in the Editor to toggle Leo's UV Mode for testing.")]
@@ -87,23 +87,27 @@ public class FlashlightCaptureDetector : MonoBehaviour
 
         bool isUvMode = IsUVMode;
 
-        // 1. Normal Mode (or if allowGhostCaptureInUVMode is checked): detect and capture GhostTargets
-        if (!isUvMode || allowGhostCaptureInUVMode)
+        // 1. Check GhostTargets (Normal Mode captures; UV Mode triggers eerie UV Cloak Shimmer!)
+        for (int i = GhostTarget.ActiveTargets.Count - 1; i >= 0; i--)
         {
-            for (int i = GhostTarget.ActiveTargets.Count - 1; i >= 0; i--)
-            {
-                GhostTarget target = GhostTarget.ActiveTargets[i];
-                if (target == null || target.IsCaptured)
-                    continue;
+            GhostTarget target = GhostTarget.ActiveTargets[i];
+            if (target == null || target.IsCaptured)
+                continue;
 
-                if (IsTargetIlluminated(target, beamOrigin, beamForward, maxRange, halfSpotAngle))
+            if (IsTargetIlluminated(target, beamOrigin, beamForward, maxRange, halfSpotAngle))
+            {
+                if (!isUvMode || allowGhostCaptureInUVMode)
                 {
                     target.ReportIlluminated();
+                }
+                else
+                {
+                    target.ReportUVIlluminated();
                 }
             }
         }
 
-        // 2. UV Mode: detect and reveal hidden GhostTraces inside the UV spotlight cone
+        // 2. In UV Mode: detect and reveal hidden GhostTraces (Footprints, Wall-Phase Rifts, Hint Rings)
         if (isUvMode)
         {
             UpdateUVTraceDetection(beamOrigin, beamForward, maxRange, halfSpotAngle);
@@ -134,7 +138,8 @@ public class FlashlightCaptureDetector : MonoBehaviour
             if (trace == null || !trace.gameObject.activeInHierarchy)
                 continue;
 
-            Vector3 tracePoint = trace.Position + Vector3.up * 0.03f;
+            // Offset slightly outward along the trace's surface normal (up for floor, wall normal for wall rifts)
+            Vector3 tracePoint = trace.Position + trace.SurfaceNormal * 0.04f;
             Vector3 toTrace = tracePoint - beamOrigin;
             float distance = toTrace.magnitude;
 
@@ -279,7 +284,9 @@ public class FlashlightCaptureDetector : MonoBehaviour
             if (target == null || target.IsCaptured)
                 continue;
 
-            Gizmos.color = target.IsIlluminated ? Color.green : (IsUVMode ? new Color(0.55f, 0.2f, 1f) : Color.red);
+            Gizmos.color = (target.IsIlluminated || target.IsUVIlluminated)
+                ? Color.green
+                : (IsUVMode ? new Color(0.55f, 0.2f, 1f) : Color.red);
             Gizmos.DrawLine(beamLight.transform.position, target.TargetCenter);
         }
     }
