@@ -140,7 +140,6 @@ GameObject:
   - component: {fileID: 4697490078510548856}
   - component: {fileID: 6214737060265180314}
   - component: {fileID: 2795121955402627069}
-  - component: {fileID: 7806419234578123461}
   m_Layer: 0
   m_Name: Flashlight Interactable
   m_TagString: Untagged
