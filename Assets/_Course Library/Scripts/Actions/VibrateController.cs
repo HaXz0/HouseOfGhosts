@@ -1,5 +1,5 @@
 ﻿using UnityEngine;
-using UnityEngine.XR.Interaction.Toolkit;
+using UnityEngine.XR.Interaction.Toolkit.Inputs.Haptics;
 
 /// <summary>
 /// Vibrate the XR Controller
@@ -9,26 +9,30 @@ public class VibrateController : MonoBehaviour
     public float strongVibrate = 0.75f;
     public float weakVibrate = 0.25f;
 
-    private XRController controller = null;
+    private IXRHapticImpulseProvider hapticImpulseProvider = null;
 
     private void Awake()
     {
-        controller = GetComponent<XRController>();
+        hapticImpulseProvider = GetComponent<IXRHapticImpulseProvider>();
     }
 
     public void Vibrate(float amplitude, float duration)
     {
-        // OpenVR currently only supports amplitude
-        controller.SendHapticImpulse(amplitude, duration);
+        SendImpulse(amplitude, duration);
     }
 
     public void VibrateWeak(float duration)
     {
-        controller.SendHapticImpulse(weakVibrate, duration);
+        SendImpulse(weakVibrate, duration);
     }
 
     public void VibrateStrong(float duration)
     {
-        controller.SendHapticImpulse(strongVibrate, duration);
+        SendImpulse(strongVibrate, duration);
+    }
+
+    private void SendImpulse(float amplitude, float duration)
+    {
+        hapticImpulseProvider?.GetChannelGroup()?.GetChannel()?.SendHapticImpulse(amplitude, duration);
     }
 }

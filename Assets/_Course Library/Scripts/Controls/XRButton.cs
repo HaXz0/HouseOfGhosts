@@ -131,7 +131,7 @@ public class XRButton : UnityEngine.XR.Interaction.Toolkit.Interactables.XRBaseI
         return buttonTransform.localPosition.y < threshold;
     }
 
-    public override bool IsSelectableBy(UnityEngine.XR.Interaction.Toolkit.Interactors.XRBaseInteractor interactor)
+    public override bool IsSelectableBy(UnityEngine.XR.Interaction.Toolkit.Interactors.IXRSelectInteractor interactor)
     {
         return false;
     }
