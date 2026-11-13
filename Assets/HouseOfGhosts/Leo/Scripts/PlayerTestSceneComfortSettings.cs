@@ -47,6 +47,8 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
     LocomotionProvider[] m_LocomotionProviders;
     Camera m_PlayerCamera;
     Transform m_LeftWrist;
+    NearFarInteractor m_RightNearFarInteractor;
+    XRInteractorLineVisual[] m_MenuRayVisuals;
     CanvasGroup m_CanvasGroup;
     RectTransform m_CanvasRect;
     TunnelingVignetteController m_VignetteController;
@@ -69,6 +71,7 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
     bool m_SmoothTurning;
     bool m_VignetteEnabled;
     bool m_MenuVisible;
+    bool m_MenuRayHovering;
     bool m_HideTimerStarted;
     float m_HideTimer;
     float m_MoveSpeed;
@@ -90,6 +93,7 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         m_LeftWrist = FindChildByName(xrOrigin.transform, "Left Controller");
         BindHandModel(xrOrigin.transform, "Left Controller", "VR_Hand_Blue_Left");
         BindHandModel(xrOrigin.transform, "Right Controller", "VR_Hand_Blue_Right");
+        ConfigureMenuRay(xrOrigin.transform);
         m_InputManagers = FindObjectsByType<ControllerInputActionManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         m_MoveProviders = FindObjectsByType<DynamicMoveProvider>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         m_SnapTurnProviders = FindObjectsByType<SnapTurnProvider>(FindObjectsInactive.Include, FindObjectsSortMode.None);
@@ -160,6 +164,12 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
     void OnDestroy()
     {
+        if (m_RightNearFarInteractor != null)
+        {
+            m_RightNearFarInteractor.uiHoverEntered.RemoveListener(OnMenuUIHoverEntered);
+            m_RightNearFarInteractor.uiHoverExited.RemoveListener(OnMenuUIHoverExited);
+        }
+
         RestoreLocomotionProviders();
     }
 
@@ -380,6 +390,9 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         m_CanvasGroup.alpha = visible ? 1f : 0f;
         m_CanvasGroup.interactable = visible;
         m_CanvasGroup.blocksRaycasts = visible;
+        if (!visible)
+            m_MenuRayHovering = false;
+        UpdateMenuRayVisuals();
 
         if (visible)
             SuppressLocomotionProviders();
@@ -586,6 +599,60 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         hand.transform.localPosition = Vector3.zero;
         hand.transform.localRotation = Quaternion.identity;
         hand.transform.localScale = Vector3.one;
+
+        var pokeInteractor = FindChildByName(controller, "Poke Interactor");
+        if (pokeInteractor != null)
+        {
+            foreach (var renderer in pokeInteractor.GetComponentsInChildren<Renderer>(true))
+                renderer.enabled = false;
+        }
+    }
+
+    void ConfigureMenuRay(Transform xrOrigin)
+    {
+        foreach (var nearFarInteractor in xrOrigin.GetComponentsInChildren<NearFarInteractor>(true))
+        {
+            foreach (var lineVisual in nearFarInteractor.GetComponentsInChildren<XRInteractorLineVisual>(true))
+                lineVisual.enabled = false;
+        }
+
+        var rightController = FindChildByName(xrOrigin, "Right Controller");
+        if (rightController == null)
+            return;
+
+        m_RightNearFarInteractor = rightController.GetComponentInChildren<NearFarInteractor>(true);
+        if (m_RightNearFarInteractor == null)
+            return;
+
+        m_MenuRayVisuals = m_RightNearFarInteractor.GetComponentsInChildren<XRInteractorLineVisual>(true);
+        m_RightNearFarInteractor.uiHoverEntered.AddListener(OnMenuUIHoverEntered);
+        m_RightNearFarInteractor.uiHoverExited.AddListener(OnMenuUIHoverExited);
+        UpdateMenuRayVisuals();
+    }
+
+    void OnMenuUIHoverEntered(UIHoverEventArgs args)
+    {
+        m_MenuRayHovering = true;
+        UpdateMenuRayVisuals();
+    }
+
+    void OnMenuUIHoverExited(UIHoverEventArgs args)
+    {
+        m_MenuRayHovering = false;
+        UpdateMenuRayVisuals();
+    }
+
+    void UpdateMenuRayVisuals()
+    {
+        if (m_MenuRayVisuals == null)
+            return;
+
+        var shouldShow = m_MenuVisible && m_MenuRayHovering;
+        foreach (var lineVisual in m_MenuRayVisuals)
+        {
+            if (lineVisual != null)
+                lineVisual.enabled = shouldShow;
+        }
     }
 
     static Gradient CreateGradient(Color color)
