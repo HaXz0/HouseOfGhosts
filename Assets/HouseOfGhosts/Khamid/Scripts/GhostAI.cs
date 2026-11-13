@@ -26,6 +26,7 @@ public class GhostAI : MonoBehaviour
     [SerializeField] private GhostState currentState = GhostState.Hidden;
     [SerializeField] private int activeRoundNumber = 1;
     [SerializeField] private bool isPhasingThroughWall = false;
+    [SerializeField] private bool isCloakedWhileFleeing = false;
     [SerializeField] private float currentSpectralVisibility = 0f;
 
     [Header("Stage 1: Cloak & Supernatural Materialization")]
@@ -47,18 +48,32 @@ public class GhostAI : MonoBehaviour
     [Range(0.2f, 1.0f)]
     [SerializeField] private float stalkPhantomVisibility = 0.62f;
 
-    [Tooltip("Ghostly UV silhouette visibility (0.48 = 48%) when you shine the UV flashlight onto a cloaked Hidden ghost.")]
+    [Tooltip("Ghostly UV silhouette visibility (0.48 = 48%) when you shine the UV flashlight onto a cloaked ghost.")]
     [Range(0.15f, 0.85f)]
     [SerializeField] private float uvCloakShimmerVisibility = 0.48f;
 
-    [Tooltip("Rim glow color when the UV beam reveals a cloaked ghost.")]
+    [Tooltip("PURPLE rim/aura color when the UV beam reveals a cloaked/invisible ghost.")]
     [SerializeField] private Color uvShimmerRimColor = new Color(0.58f, 0.22f, 1.0f, 1.0f);
+
+    [Tooltip("Spectral BLUE aura color when the ghost is exposed and visible to the naked eye (without UV).")]
+    [SerializeField] private Color exposedVisibleBlueColor = new Color(0.16f, 0.72f, 1.0f, 1.0f);
 
     [Tooltip("If true, holding the UV beam on a Hidden ghost for uvDisturbDuration spooks her into Fake Escape.")]
     [SerializeField] private bool disturbWithUVBeam = true;
 
     [Tooltip("Seconds of continuous UV beam exposure before a Hidden ghost bolts (gives you time to see her purple UV aura & switch to Normal light!).")]
     [SerializeField] private float uvDisturbDuration = 2.2f;
+
+    [Header("Stage 1B: Invisible Flee (Stealth Escape)")]
+    [Tooltip("If true, when detected and running away, the ghost has a chance (cloakedFleeChance) to cloak into invisibility!")]
+    [SerializeField] private bool enableCloakedFlee = true;
+
+    [Tooltip("Chance (0.15 = 15%) for the ghost to turn invisible when running away! Drag to 1.0 (100%) to test every escape.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float cloakedFleeChance = 0.15f;
+
+    [Tooltip("Distance in meters (default 1.5m): Normal Flashlight does NOTHING to an invisible fleeing ghost until you get within this distance AND aim the flashlight at her!")]
+    [SerializeField] private float cloakedFleeRevealDistance = 1.5f;
 
     [Header("Stage 2: Flashlight Beam-Lock Struggle")]
     [Tooltip("If true, holding the Normal beam on the ghost makes her visibly tremble and drags down her flee speed as capture nears 3s.")]
@@ -168,17 +183,17 @@ public class GhostAI : MonoBehaviour
     [Tooltip("How long (seconds) each dropped footprint remains discoverable with the UV flashlight.")]
     [SerializeField] private float traceLifetimeSeconds = 25.0f;
 
-    [Tooltip("Fluorescent color of standard UV footprints.")]
-    [SerializeField] private Color footprintUVColor = new Color(0.15f, 1.0f, 0.78f, 1.0f);
+    [Tooltip("BLUE UV trace color used for ALL traces (Footprints, Escape Ring, Wall Splash, and Rounds 4-6 Ghost Outline) dropped while the ghost is VISIBLE!")]
+    [SerializeField] private Color visibleStateTraceUVColor = new Color(0.16f, 0.72f, 1.0f, 1.0f);
+
+    [Tooltip("PURPLE UV trace color used for ALL traces (Footprints, Escape Ring, Wall Splash, Rounds 4-6 Ghost Outline, and Search Hints) dropped while the ghost is INVISIBLE!")]
+    [SerializeField] private Color invisibleStateTraceUVColor = new Color(0.62f, 0.22f, 1.0f, 1.0f);
 
     [Tooltip("If true, passing through a solid wall leaves glowing UV Splash (Early) or Ghost Outline (Late) marks on BOTH sides of the wall!")]
     [SerializeField] private bool leaveWallPhaseUVMarks = true;
 
     [Tooltip("Seconds that UV Wall Marks (Splash / Ghost Outline) stay discoverable.")]
     [SerializeField] private float wallMarkLifetimeSeconds = 32.0f;
-
-    [Tooltip("Fluorescent cyan-violet color for 60s Search Hint UV breadcrumb rings.")]
-    [SerializeField] private Color wallMarkUVColor = new Color(0.38f, 0.72f, 1.0f, 1.0f);
 
     [Tooltip("If true, bolting from a hiding spot leaves a pulsing UV Residual Ring at the spot she escaped from.")]
     [SerializeField] private bool leaveEscapeOriginMark = true;
@@ -200,9 +215,6 @@ public class GhostAI : MonoBehaviour
     [Tooltip("Diameter (meters) of the organic UV Ectoplasm Splash left on walls in Early Rounds (1-3).")]
     [SerializeField] private float earlyWallSplashSize = 0.95f;
 
-    [Tooltip("Fluorescent UV color of the Early-Round Wall Splash (Rounds 1-3).")]
-    [SerializeField] private Color earlyWallSplashUVColor = new Color(0.18f, 0.96f, 0.82f, 1.0f);
-
     [Tooltip("Super-fast forward speed multiplier WHILE passing through a solid wall in Late Rounds (4-6)!")]
     [SerializeField] private float lateWallPhaseSpeedMultiplier = 2.35f;
 
@@ -211,9 +223,6 @@ public class GhostAI : MonoBehaviour
 
     [Tooltip("Seconds that the post-wall speed surge lasts before smoothly settling back to normal round speed.")]
     [SerializeField] private float lateWallSpeedBoostDuration = 1.6f;
-
-    [Tooltip("Fluorescent UV color of the Late-Round Ghost Silhouette Outline (Rounds 4-6).")]
-    [SerializeField] private Color lateGhostOutlineUVColor = new Color(0.55f, 0.35f, 1.0f, 1.0f);
 
     [Tooltip("Padding around the ghost's body dimensions so the glowing UV outline aura never clips at the quad border.")]
     [Range(1.02f, 1.35f)]
@@ -322,11 +331,22 @@ public class GhostAI : MonoBehaviour
     private bool m_NextFootIsRight = true;
     private Transform m_TracePoolContainer;
 
-    private static readonly Color s_PhantomRimColor = new Color(0.32f, 0.86f, 1.0f, 1.0f);
+    private bool m_ForceNextEscapeCloaked = false;
 
     public GhostState CurrentState => currentState;
     public bool IsPhasingThroughWall => isPhasingThroughWall;
+    public bool IsCloakedWhileFleeing => isCloakedWhileFleeing;
     public float CurrentSpectralVisibility => currentSpectralVisibility;
+
+    /// <summary>
+    /// True whenever the ghost is operating invisibly (Hidden or Invisible Flee) -> Purple UV aura & Purple UV traces!
+    /// False whenever the ghost is exposed/visible (Stalking, WatchingPlayer, or Visible Flee) -> Blue body & Blue UV traces!
+    /// </summary>
+    public bool IsGhostCurrentlyInvisible =>
+        cloakWhileHidden && (currentState == GhostState.Hidden || (currentState == GhostState.Fleeing && isCloakedWhileFleeing));
+
+    private Color GetActiveTraceUVColor() =>
+        IsGhostCurrentlyInvisible ? invisibleStateTraceUVColor : visibleStateTraceUVColor;
 
     /// <summary>
     /// True in Late Rounds (default Rounds 4-6) or when ForceLateOutlineAndSpeed is selected in the Inspector.
@@ -392,8 +412,14 @@ public class GhostAI : MonoBehaviour
         }
 
         // Start cloaked if starting in Hidden state
-        currentSpectralVisibility = (cloakWhileHidden && currentState == GhostState.Hidden) ? 0f : 1f;
-        PushSpectralStateToTarget(currentSpectralVisibility, false, s_PhantomRimColor, 0f);
+        bool startsCloaked = cloakWhileHidden && currentState == GhostState.Hidden;
+        currentSpectralVisibility = startsCloaked ? 0f : 1f;
+        PushSpectralStateToTarget(
+            currentSpectralVisibility,
+            false,
+            startsCloaked ? uvShimmerRimColor : exposedVisibleBlueColor,
+            startsCloaked ? 0f : 1.45f
+        );
     }
 
     private void CacheRestingBodyDimensions()
@@ -433,8 +459,8 @@ public class GhostAI : MonoBehaviour
         if (currentState == GhostState.Captured)
             return;
 
-        UpdateWallPhaseState();
         UpdateCloakAndSpectralPresence();
+        UpdateWallPhaseState();
 
         switch (currentState)
         {
@@ -457,14 +483,18 @@ public class GhostAI : MonoBehaviour
     }
 
     // =========================================================================
-    // STAGE 1: CLOAK, BOTTOM-UP MATERIALIZE, UV SHIMMER & STALKING PHANTOM
+    // STAGE 1 & 1B: CLOAK, INVISIBLE FLEE, BLUE (VISIBLE) VS PURPLE (INVISIBLE)
     // =========================================================================
     private void UpdateCloakAndSpectralPresence()
     {
         if (!cloakWhileHidden)
         {
+            isCloakedWhileFleeing = false;
+            if (m_GhostTarget != null)
+                m_GhostTarget.SetCloakCaptureImmunity(false);
+
             currentSpectralVisibility = 1.0f;
-            PushSpectralStateToTarget(1.0f, false, s_PhantomRimColor, 0f);
+            PushSpectralStateToTarget(1.0f, false, exposedVisibleBlueColor, 1.45f);
             return;
         }
 
@@ -473,34 +503,57 @@ public class GhostAI : MonoBehaviour
             m_HintShimmerTimer -= Time.deltaTime;
         }
 
-        float targetVisibility = 1.0f;
-        float transitionSpeed = 1.0f / Mathf.Max(0.08f, materializeDuration);
-        Color rimColor = s_PhantomRimColor;
-        float rimIntensity = 0f;
-
         bool hitByNormalBeam = m_GhostTarget != null && m_GhostTarget.IsIlluminated;
         bool hitByUVBeam = m_GhostTarget != null && m_GhostTarget.IsUVIlluminated;
 
-        if (currentState == GhostState.Hidden)
+        // Stage 1B: Break Invisible Flee cloak ONLY when player is within cloakedFleeRevealDistance (1.5m) AND aiming the Normal Flashlight at her!
+        if (currentState == GhostState.Fleeing && isCloakedWhileFleeing)
         {
+            if (m_FleeElapsedSeconds >= 0.35f && hitByNormalBeam && GetPlayerDistanceToGhostBody() <= cloakedFleeRevealDistance)
+            {
+                isCloakedWhileFleeing = false;
+                if (m_GhostTarget != null)
+                {
+                    m_GhostTarget.SetCloakCaptureImmunity(false);
+                }
+                Debug.Log($"[{gameObject.name}] *** STEALTH CLOAK SHATTERED! *** Player aimed flashlight within {cloakedFleeRevealDistance:F1}m — Ghost exposed (BLUE) & vulnerable!");
+            }
+        }
+        else if (isCloakedWhileFleeing)
+        {
+            isCloakedWhileFleeing = false;
+        }
+
+        if (m_GhostTarget != null)
+        {
+            m_GhostTarget.SetCloakCaptureImmunity(currentState == GhostState.Fleeing && isCloakedWhileFleeing);
+        }
+
+        float targetVisibility = 1.0f;
+        float transitionSpeed = 1.0f / Mathf.Max(0.08f, materializeDuration);
+        Color rimColor = exposedVisibleBlueColor;
+        float rimIntensity = 1.45f;
+
+        if (currentState == GhostState.Hidden || (currentState == GhostState.Fleeing && isCloakedWhileFleeing))
+        {
+            // INVISIBLE / CLOAKED MODE: 0% to naked eye, PURPLE aura only under UV!
+            rimColor = uvShimmerRimColor;
+
             if (hitByUVBeam)
             {
-                // UV Cloak Shimmer: Eerie ultraviolet/cyan silhouette while Hidden!
                 float uvPulse = 0.88f + 0.12f * Mathf.Sin(Time.time * 9.0f);
                 targetVisibility = uvCloakShimmerVisibility * uvPulse;
                 m_IsUsingHeightWipe = false;
                 transitionSpeed = 4.5f;
-                rimColor = uvShimmerRimColor;
                 rimIntensity = 1.85f;
             }
-            else if (m_HintShimmerTimer > 0f)
+            else if (currentState == GhostState.Hidden && m_HintShimmerTimer > 0f)
             {
                 // Stage 5: Brief 60s Search Hint spectral apparition pulse
                 float hintWave = Mathf.Sin((1.0f - (m_HintShimmerTimer / Mathf.Max(0.1f, hintFlickerDuration))) * Mathf.PI);
                 targetVisibility = 0.48f * Mathf.Clamp01(hintWave * 1.3f);
                 m_IsUsingHeightWipe = false;
                 transitionSpeed = 3.5f;
-                rimColor = s_PhantomRimColor;
                 rimIntensity = 1.6f;
             }
             else
@@ -511,43 +564,63 @@ public class GhostAI : MonoBehaviour
                 if (currentSpectralVisibility > 0.42f)
                 {
                     m_IsUsingHeightWipe = true;
+                    rimIntensity = 1.65f;
+                }
+                else
+                {
+                    rimIntensity = 1.25f;
                 }
             }
         }
         else if (currentState == GhostState.Stalking)
         {
-            // Stalking Phantom Apparition: Semi-ethereal flickering ghostly form
+            // VISIBLE STALKING: Semi-ethereal BLUE phantom form (visible without UV)
             float eerieFlicker = (Mathf.PerlinNoise(Time.time * 3.8f, m_NoiseSeed) - 0.5f) * 0.14f;
             targetVisibility = Mathf.Clamp01(stalkPhantomVisibility + eerieFlicker);
             m_IsUsingHeightWipe = false;
             transitionSpeed = 2.2f;
-            rimColor = s_PhantomRimColor;
-            rimIntensity = 0.95f;
+            rimColor = exposedVisibleBlueColor;
+            rimIntensity = 1.25f;
         }
         else
         {
-            // WatchingPlayer or Fleeing -> Full Bottom-Up Supernatural Materialization to 100%!
+            // EXPOSED WATCHING OR VISIBLE FLEEING: Full 100% Materialization in Spectral BLUE (without UV)!
             targetVisibility = 1.0f;
             transitionSpeed = 1.0f / Mathf.Max(0.08f, materializeDuration);
+            rimColor = exposedVisibleBlueColor;
+
             if (currentSpectralVisibility < 0.98f)
             {
                 m_IsUsingHeightWipe = true;
-                rimIntensity = (1.0f - currentSpectralVisibility) * 1.4f;
+                rimIntensity = Mathf.Lerp(1.85f, 1.45f, currentSpectralVisibility);
             }
             else
             {
                 m_IsUsingHeightWipe = false;
+                rimIntensity = 1.45f;
             }
         }
 
-        // Anti-Frustration Beam Burn-Lock: Normal beam burns away any cloak!
-        if (hitByNormalBeam && currentState != GhostState.Hidden)
+        // Anti-Frustration Beam Burn-Lock: Normal beam burns away cloak ONLY when not stealth-immune!
+        if (hitByNormalBeam && currentState != GhostState.Hidden && !isCloakedWhileFleeing)
         {
             targetVisibility = 1.0f;
         }
 
         currentSpectralVisibility = Mathf.MoveTowards(currentSpectralVisibility, targetVisibility, transitionSpeed * Time.deltaTime);
         PushSpectralStateToTarget(currentSpectralVisibility, m_IsUsingHeightWipe, rimColor, rimIntensity);
+    }
+
+    private float GetPlayerDistanceToGhostBody()
+    {
+        if (playerHead == null)
+            return float.MaxValue;
+
+        Vector3 center = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
+        float halfHeight = m_RestingBodyHeight * 0.5f;
+        float clampedY = Mathf.Clamp(playerHead.position.y, center.y - halfHeight, center.y + halfHeight);
+        Vector3 closestTorsoPoint = new Vector3(center.x, clampedY, center.z);
+        return Vector3.Distance(playerHead.position, closestTorsoPoint);
     }
 
     private void PushSpectralStateToTarget(float visibility, bool useWipe, Color rimColor, float rimIntensity)
@@ -671,7 +744,7 @@ public class GhostAI : MonoBehaviour
                 new Vector3(0.22f, 0.32f, 1.0f),
                 traceLifetimeSeconds,
                 GhostTrace.TraceVisualType.Footprint,
-                footprintUVColor
+                GetActiveTraceUVColor()
             );
         }
     }
@@ -695,7 +768,7 @@ public class GhostAI : MonoBehaviour
                 new Vector3(0.55f, 0.55f, 1.0f),
                 wallMarkLifetimeSeconds,
                 GhostTrace.TraceVisualType.ResidualRing,
-                footprintUVColor
+                GetActiveTraceUVColor()
             );
         }
     }
@@ -817,6 +890,8 @@ public class GhostAI : MonoBehaviour
         if (trace == null)
             return;
 
+        Color activeUVColor = GetActiveTraceUVColor();
+        string colorModeLabel = IsGhostCurrentlyInvisible ? "PURPLE (Invisible)" : "BLUE (Visible)";
         string sideLabel = isEnteringWall ? "Entry" : "Exit";
 
         if (!useLateOutline)
@@ -835,17 +910,17 @@ public class GhostAI : MonoBehaviour
                 splashScale,
                 wallMarkLifetimeSeconds,
                 GhostTrace.TraceVisualType.WallSplash,
-                earlyWallSplashUVColor,
+                activeUVColor,
                 splashSeed,
                 null,
                 hit.collider
             );
 
-            Debug.Log($"[{gameObject.name}] Spawned UV WallSplash ({sideLabel}) on '{hit.collider.name}' at {splashPos}");
+            Debug.Log($"[{gameObject.name}] Spawned UV WallSplash [{colorModeLabel}, {sideLabel}] on '{hit.collider.name}' at {splashPos}");
         }
         else
         {
-            // Scenario 2 (Rounds 4-6): Upright Life-Size Hollow Ghost Silhouette Outline (Capsule now; 3D Ghost Girl ready!)
+            // Scenario 2 (Rounds 4-6): Upright Life-Size Hollow Ghost Silhouette Outline (Blue when visible, Purple when invisible!)
             float floorY = FindFloorHeightAt(hit.point + wallNormal * 0.18f);
             float minCenterY = floorY + (m_RestingBodyHeight * 0.5f) + 0.02f;
             float outlineCenterY = Mathf.Max(minCenterY, ghostCenterY);
@@ -865,13 +940,13 @@ public class GhostAI : MonoBehaviour
                 outlineScale,
                 wallMarkLifetimeSeconds,
                 GhostTrace.TraceVisualType.GhostOutline,
-                lateGhostOutlineUVColor,
+                activeUVColor,
                 0f,
                 customGhostSilhouetteTexture,
                 hit.collider
             );
 
-            Debug.Log($"[{gameObject.name}] Spawned UV GhostOutline ({sideLabel}) on '{hit.collider.name}' at {outlinePos}");
+            Debug.Log($"[{gameObject.name}] Spawned UV GhostOutline [{colorModeLabel}, {sideLabel}] on '{hit.collider.name}' at {outlinePos}");
         }
     }
 
@@ -985,7 +1060,8 @@ public class GhostAI : MonoBehaviour
 
         if (m_GhostTarget != null)
         {
-            m_GhostTarget.SetWallPhaseBlend(m_CurrentWallPhaseBlend);
+            // Suppress visible cyan wall-phase body glow while cloaked so walls never betray her invisibility (or overwrite Purple UV shimmer)
+            m_GhostTarget.SetWallPhaseBlend(IsGhostCurrentlyInvisible ? 0f : m_CurrentWallPhaseBlend);
         }
 
         transform.localScale = new Vector3(
@@ -1133,11 +1209,17 @@ public class GhostAI : MonoBehaviour
     private void StartStalking()
     {
         currentState = GhostState.Stalking;
+        isCloakedWhileFleeing = false;
+        if (m_GhostTarget != null)
+        {
+            m_GhostTarget.SetCloakCaptureImmunity(false);
+        }
+
         m_StalkTimer = 0f;
         m_BaseYPosition = transform.position.y;
         m_LastTraceDropPosition = transform.position;
         m_PreviousChestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
-        Debug.Log($"[{gameObject.name}] Player hasn't found ghost for {stalkStartDelaySeconds:F0}s -> Entering STALKING Phantom state!");
+        Debug.Log($"[{gameObject.name}] Player hasn't found ghost for {stalkStartDelaySeconds:F0}s -> Entering STALKING Phantom state (BLUE)!");
     }
 
     private void UpdateStalking()
@@ -1294,14 +1376,14 @@ public class GhostAI : MonoBehaviour
         }
 
         Vector3 targetPos = m_TargetSpot.Position;
-        bool isIlluminated = m_GhostTarget != null && m_GhostTarget.IsIlluminated;
-        float captureProgress = m_GhostTarget != null ? m_GhostTarget.CurrentProgressNormalized : 0f;
+        bool effectivelyIlluminated = m_GhostTarget != null && m_GhostTarget.IsIlluminated && !isCloakedWhileFleeing;
+        float captureProgress = (m_GhostTarget != null && !isCloakedWhileFleeing) ? m_GhostTarget.CurrentProgressNormalized : 0f;
 
-        // 1. Reactive Flashlight Panic + Stage 2 Beam-Lock Slowdown!
+        // 1. Reactive Flashlight Panic + Stage 2 Beam-Lock Slowdown! (Normal Flashlight does nothing while cloaked-fleeing > 1.5m!)
         float activeSpeed = fleeSpeed;
         float activeWeaveAmp = weaveAmplitude;
 
-        if (enablePanicDodge && isIlluminated)
+        if (enablePanicDodge && effectivelyIlluminated)
         {
             activeSpeed *= illuminatedSpeedMultiplier;
             activeWeaveAmp *= illuminatedWeaveMultiplier;
@@ -1401,6 +1483,7 @@ public class GhostAI : MonoBehaviour
         if (Vector3.Distance(m_CorePathPosition, targetPos) <= 0.1f)
         {
             bool heldInFlashlightBeam = preventCloakWhileIlluminated
+                && !isCloakedWhileFleeing
                 && m_GhostTarget != null
                 && m_GhostTarget.IsRecentlyIlluminated;
 
@@ -1409,7 +1492,7 @@ public class GhostAI : MonoBehaviour
                 m_PreviousSpot = m_CurrentSpot;
                 m_CurrentSpot = m_TargetSpot;
                 Debug.Log($"[{gameObject.name}] Reached '{m_CurrentSpot.SpotName}' while illuminated! Beam Burn-Lock prevents cloaking — bolting to a new spot!");
-                StartFleeing();
+                StartFleeing(allowCloakedEscape: false);
                 return;
             }
 
@@ -1422,6 +1505,11 @@ public class GhostAI : MonoBehaviour
             m_LateralOffsetVelocity = 0f;
             m_HiddenTimer = 0f;
             m_UVExposureTimer = 0f;
+            isCloakedWhileFleeing = false;
+            if (m_GhostTarget != null)
+            {
+                m_GhostTarget.SetCloakCaptureImmunity(false);
+            }
             currentState = GhostState.Hidden;
             Debug.Log($"[{gameObject.name}] Ghost safely reached hiding spot '{m_CurrentSpot.SpotName}' — dematerializing into cloak.");
         }
@@ -1432,7 +1520,7 @@ public class GhostAI : MonoBehaviour
     // =========================================================================
     private Vector3 CalculateBeamStruggleOffset()
     {
-        if (!enableBeamStruggle || m_GhostTarget == null || !m_GhostTarget.IsIlluminated)
+        if (!enableBeamStruggle || isCloakedWhileFleeing || m_GhostTarget == null || !m_GhostTarget.IsIlluminated)
             return Vector3.zero;
 
         float progress = m_GhostTarget.CurrentProgressNormalized;
@@ -1509,7 +1597,7 @@ public class GhostAI : MonoBehaviour
                         new Vector3(0.45f, 0.45f, 1.0f),
                         wallMarkLifetimeSeconds,
                         GhostTrace.TraceVisualType.ResidualRing,
-                        wallMarkUVColor
+                        GetActiveTraceUVColor()
                     );
                 }
             }
@@ -1521,6 +1609,16 @@ public class GhostAI : MonoBehaviour
     // =========================================================================
     // FAKE ESCAPE, ROUND RESET & TACTICAL HIDING SPOT SCORING
     // =========================================================================
+    /// <summary>
+    /// Play-Mode testing shortcut: right-click GhostAI and choose this to guarantee the very next escape is Invisible!
+    /// </summary>
+    [ContextMenu("Force Next Escape Invisible (Test)")]
+    public void ForceNextEscapeInvisible()
+    {
+        m_ForceNextEscapeCloaked = true;
+        Debug.Log($"[{gameObject.name}] Next escape is armed to 100% INVISIBLE FLEE (Purple UV traces + {cloakedFleeRevealDistance:F1}m flashlight break)!");
+    }
+
     [ContextMenu("Trigger Fake Escape")]
     public void TriggerFakeEscape(string reason = "Triggered")
     {
@@ -1534,19 +1632,25 @@ public class GhostAI : MonoBehaviour
         m_BaseYPosition = transform.position.y;
         m_CorePathPosition = transform.position;
 
-        bool chooseWatch = Random.value <= watchPlayerChance;
+        bool chooseWatch = !m_ForceNextEscapeCloaked && (Random.value <= watchPlayerChance);
 
         if (chooseWatch)
         {
+            isCloakedWhileFleeing = false;
+            if (m_GhostTarget != null)
+            {
+                m_GhostTarget.SetCloakCaptureImmunity(false);
+            }
+
             currentState = GhostState.WatchingPlayer;
             m_WatchTimer = watchPlayerDuration;
             m_WasIlluminatedDuringStare = false;
             m_StareBeamLostGraceTimer = stareBeamLossGraceSeconds;
-            Debug.Log($"[{gameObject.name}] {reason} -> Materializing into Fake Escape [Behaviour A: Staring for {watchPlayerDuration:F1}s]");
+            Debug.Log($"[{gameObject.name}] {reason} -> Materializing (BLUE) into Fake Escape [Behaviour A: Staring for {watchPlayerDuration:F1}s]");
         }
         else
         {
-            Debug.Log($"[{gameObject.name}] {reason} -> Materializing into Fake Escape [Behaviour B: Immediate Escape!]");
+            Debug.Log($"[{gameObject.name}] {reason} -> Fake Escape [Behaviour B: Immediate Escape!]");
             StartFleeing();
         }
     }
@@ -1594,6 +1698,8 @@ public class GhostAI : MonoBehaviour
         m_LateWallSurgeTimer = 0f;
         m_WasPhasingLastFrame = false;
         m_WasIlluminatedDuringStare = false;
+        isCloakedWhileFleeing = false;
+        m_ForceNextEscapeCloaked = false;
         transform.localScale = m_InitialLocalScale;
 
         GhostHidingSpot spawnSpot = GetSmartNextHidingSpot();
@@ -1614,7 +1720,12 @@ public class GhostAI : MonoBehaviour
         if (m_GhostTarget != null)
         {
             m_GhostTarget.ResetTarget();
-            m_GhostTarget.SetSpectralState(currentSpectralVisibility, false, s_PhantomRimColor, 0f);
+            m_GhostTarget.SetSpectralState(
+                currentSpectralVisibility,
+                false,
+                cloakWhileHidden ? uvShimmerRimColor : exposedVisibleBlueColor,
+                cloakWhileHidden ? 0f : 1.45f
+            );
         }
         else
         {
@@ -1627,7 +1738,7 @@ public class GhostAI : MonoBehaviour
         Debug.Log($"[{gameObject.name}] Round {activeRoundNumber} Spawn (Cloaked={cloakWhileHidden}, WallTier={wallTier}) at '{(m_CurrentSpot != null ? m_CurrentSpot.SpotName : "Start")}' | Speed: {fleeSpeed:F2} m/s");
     }
 
-    private void StartFleeing()
+    private void StartFleeing(bool allowCloakedEscape = true)
     {
         Vector3 escapeOrigin = transform.position;
         m_TargetSpot = GetSmartNextHidingSpot();
@@ -1644,6 +1755,24 @@ public class GhostAI : MonoBehaviour
         m_JukeSignVelocity = 0f;
         m_NoiseSeed = Random.Range(0f, 100f);
 
+        bool rollCloakedEscape = m_ForceNextEscapeCloaked ||
+            (allowCloakedEscape && enableCloakedFlee && cloakWhileHidden && (Random.value < cloakedFleeChance));
+        m_ForceNextEscapeCloaked = false;
+
+        currentState = GhostState.Fleeing;
+        isCloakedWhileFleeing = rollCloakedEscape;
+
+        if (m_GhostTarget != null)
+        {
+            m_GhostTarget.SetCloakCaptureImmunity(isCloakedWhileFleeing);
+        }
+
+        if (isCloakedWhileFleeing && currentSpectralVisibility < 0.52f)
+        {
+            // Brief purple phantom flash so the player sees her slip into stealth as she bolts!
+            currentSpectralVisibility = 0.55f;
+        }
+
         if (m_TargetSpot != null)
         {
             Vector3 flatDir = m_TargetSpot.Position - m_CorePathPosition;
@@ -1652,13 +1781,16 @@ public class GhostAI : MonoBehaviour
             {
                 m_LastPathForward = flatDir.normalized;
             }
-            Debug.Log($"[{gameObject.name}] Ghost fleeing to tactical spot: {m_TargetSpot.SpotName}");
+
+            string modeDesc = isCloakedWhileFleeing
+                ? $"STEALTH INVISIBLE FLEE (PURPLE UV traces | Normal Flashlight immune until <= {cloakedFleeRevealDistance:F1}m!)"
+                : "VISIBLE FLEE (BLUE body + BLUE UV traces)";
+            Debug.Log($"[{gameObject.name}] Ghost fleeing to '{m_TargetSpot.SpotName}' -> {modeDesc}");
         }
 
-        // Stage 3: Leave a pulsing UV Residual Ring at the hiding spot she bolted from!
+        // Stage 3: Leave a pulsing UV Residual Ring at the hiding spot she bolted from (Blue if visible, Purple if invisible!)
         SpawnEscapeOriginRing(escapeOrigin);
         UpdateTraceTrail(m_LastPathForward);
-        currentState = GhostState.Fleeing;
     }
 
     private GhostHidingSpot GetSmartNextHidingSpot()
@@ -1738,6 +1870,12 @@ public class GhostAI : MonoBehaviour
     {
         if (m_GhostTarget != null && m_GhostTarget.IsTestDummy)
             return;
+
+        isCloakedWhileFleeing = false;
+        if (m_GhostTarget != null)
+        {
+            m_GhostTarget.SetCloakCaptureImmunity(false);
+        }
 
         currentState = GhostState.Captured;
         transform.localScale = m_InitialLocalScale;

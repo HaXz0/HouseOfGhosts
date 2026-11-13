@@ -208,6 +208,18 @@ public class FlashlightCaptureDetector : MonoBehaviour
 
     private bool IsTargetIlluminated(GhostTarget target, Vector3 beamOrigin, Vector3 beamForward, float maxRange, float halfSpotAngle)
     {
+        // Point-blank VR check: if the player extends their flashlight directly inside the ghost's capsule (<= 0.5m)
+        if (target.IsPointInsideCollider(beamOrigin))
+        {
+            return true;
+        }
+
+        // Direct center-beam check so close-range (<= 1.5m) aiming anywhere on the body has zero vertical dead zones
+        if (HasClearLineOfSight(beamOrigin, beamForward, maxRange, target))
+        {
+            return true;
+        }
+
         target.GetAimPoints(m_AimPoints);
 
         for (int p = 0; p < m_AimPoints.Length; p++)

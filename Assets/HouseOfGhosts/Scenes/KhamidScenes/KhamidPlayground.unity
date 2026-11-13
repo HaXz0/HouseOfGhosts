@@ -587,7 +587,7 @@ MonoBehaviour:
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
-  wallPhaseColor: {r: 0.2, g: 0.85, b: 1, a: 1}
+  wallPhaseColor: {r: 0.16, g: 0.72, b: 1, a: 1}
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
@@ -614,7 +614,7 @@ CapsuleCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 97822597}
-  m_Material: {fileID: 767939346}
+  m_Material: {fileID: 779111028}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -717,6 +717,7 @@ MonoBehaviour:
   currentState: 0
   activeRoundNumber: 1
   isPhasingThroughWall: 0
+  isCloakedWhileFleeing: 0
   currentSpectralVisibility: 0
   cloakWhileHidden: 1
   materializeDuration: 0.45
@@ -725,8 +726,12 @@ MonoBehaviour:
   stalkPhantomVisibility: 0.62
   uvCloakShimmerVisibility: 0.48
   uvShimmerRimColor: {r: 0.58, g: 0.22, b: 1, a: 1}
+  exposedVisibleBlueColor: {r: 0.16, g: 0.72, b: 1, a: 1}
   disturbWithUVBeam: 1
   uvDisturbDuration: 2.2
+  enableCloakedFlee: 1
+  cloakedFleeChance: 0.15
+  cloakedFleeRevealDistance: 1.5
   enableBeamStruggle: 1
   maxBeamSlowdownFactor: 0.45
   struggleTrembleAmplitude: 0.02
@@ -759,21 +764,19 @@ MonoBehaviour:
   leaveUVTraceTrail: 1
   traceStepSpacing: 1
   traceLifetimeSeconds: 25
-  footprintUVColor: {r: 0.15, g: 1, b: 0.78, a: 1}
+  visibleStateTraceUVColor: {r: 0.16, g: 0.72, b: 1, a: 1}
+  invisibleStateTraceUVColor: {r: 0.62, g: 0.22, b: 1, a: 1}
   leaveWallPhaseUVMarks: 1
   wallMarkLifetimeSeconds: 32
-  wallMarkUVColor: {r: 0.38, g: 0.72, b: 1, a: 1}
   leaveEscapeOriginMark: 1
   tracePoolSize: 32
   uvTraceMaterial: {fileID: 2100000, guid: e841030163c7d734ebb9f9006c9c4be7, type: 2}
   lateWallPhaseStartRound: 4
   wallPhaseTestOverride: 0
   earlyWallSplashSize: 0.95
-  earlyWallSplashUVColor: {r: 0.18, g: 0.96, b: 0.82, a: 1}
   lateWallPhaseSpeedMultiplier: 2.35
   lateWallSpeedBoostMultiplier: 1.45
   lateWallSpeedBoostDuration: 1.6
-  lateGhostOutlineUVColor: {r: 0.55, g: 0.35, b: 1, a: 1}
   ghostOutlinePadding: 1.14
   customGhostSilhouetteTexture: {fileID: 0}
   enableStalking: 1
@@ -3560,19 +3563,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!134 &767939346
-PhysicsMaterial:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_Name: ' (Instance) (Instance)'
-  serializedVersion: 2
-  m_DynamicFriction: 0.6
-  m_StaticFriction: 0.6
-  m_Bounciness: 0
-  m_FrictionCombine: 0
-  m_BounceCombine: 0
 --- !u!1 &777797985
 GameObject:
   m_ObjectHideFlags: 0
@@ -3729,6 +3719,19 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 777797985}
   m_Mesh: {fileID: 10208, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!134 &779111028
+PhysicsMaterial:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: ' (Instance) (Instance) (Instance)'
+  serializedVersion: 2
+  m_DynamicFriction: 0.6
+  m_StaticFriction: 0.6
+  m_Bounciness: 0
+  m_FrictionCombine: 0
+  m_BounceCombine: 0
 --- !u!1 &794443611
 GameObject:
   m_ObjectHideFlags: 0

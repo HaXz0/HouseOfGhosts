@@ -41,8 +41,8 @@ public class GhostTarget : MonoBehaviour
     [Tooltip("Automatically links to 'HouseOfGhosts/GhostSpectralPresence' for cloaking & dissolve.")]
     [SerializeField] private Shader spectralShader;
 
-    [Tooltip("Spectral icy cyan color when the ghost phases through a solid wall or materializes.")]
-    [SerializeField] private Color wallPhaseColor = new Color(0.2f, 0.85f, 1.0f, 1.0f);
+    [Tooltip("Spectral icy blue color when the ghost phases through a solid wall or materializes.")]
+    [SerializeField] private Color wallPhaseColor = new Color(0.16f, 0.72f, 1.0f, 1.0f);
 
     [Tooltip("Color when the flashlight beam first hits the ghost.")]
     [SerializeField] private Color startIlluminatedColor = new Color(1f, 0.9f, 0.3f, 1f);
@@ -111,8 +111,11 @@ public class GhostTarget : MonoBehaviour
     // Stage 1 spectral presence state (default 1.0 so test dummies stay visible)
     private float m_SpectralVisibility = 1.0f;
     private float m_WipeMode = 0.0f;
-    private Color m_CustomRimColor = new Color(0.3f, 0.85f, 1.0f, 1.0f);
+    private Color m_CustomRimColor = new Color(0.16f, 0.72f, 1.0f, 1.0f);
     private float m_CustomRimIntensity = 0f;
+
+    // Stage 1B stealth escape capture immunity (Normal Flashlight does nothing until <= reveal distance)
+    private bool m_IsCloakCaptureImmune = false;
 
     // Stage 2 capture vanish animation state
     private bool m_IsPlayingCaptureVanish = false;
@@ -147,12 +150,11 @@ public class GhostTarget : MonoBehaviour
     private static readonly int s_DissolveEdgeColorId = Shader.PropertyToID("_DissolveEdgeColor");
     private static readonly int s_RimColorId = Shader.PropertyToID("_RimColor");
     private static readonly int s_RimIntensityId = Shader.PropertyToID("_RimIntensity");
-    private static readonly Color s_UVSpectralAuraColor = new Color(0.54f, 0.16f, 1.0f, 1.0f);
-    private static readonly Color s_UVSpectralRimColor = new Color(0.72f, 0.28f, 1.0f, 1.0f);
 
     public float CurrentProgressNormalized => Mathf.Clamp01(m_CurrentCaptureTime / requiredCaptureDuration);
     public bool IsIlluminated => m_IsIlluminatedThisFrame;
-    public bool IsRecentlyIlluminated => m_IsIlluminatedThisFrame || m_CurrentGraceTimer > 0f;
+    public bool IsCloakCaptureImmune => m_IsCloakCaptureImmune;
+    public bool IsRecentlyIlluminated => (!m_IsCloakCaptureImmune && m_IsIlluminatedThisFrame) || m_CurrentGraceTimer > 0f;
     public bool IsUVIlluminated => m_IsUVIlluminatedThisFrame;
     public bool IsCaptured => m_IsCaptured;
     public bool IsTestDummy => isTestDummy;
@@ -317,7 +319,9 @@ public class GhostTarget : MonoBehaviour
             return;
         }
 
-        if (m_IsIlluminatedThisFrame)
+        bool effectivelyIlluminated = m_IsIlluminatedThisFrame && !m_IsCloakCaptureImmune;
+
+        if (effectivelyIlluminated)
         {
             m_CurrentGraceTimer = beamLossGracePeriod;
             m_CurrentCaptureTime += Time.deltaTime;
@@ -459,11 +463,35 @@ public class GhostTarget : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Returns true if a world-space point (such as a close-range VR flashlight tip) is inside the ghost's collider.
+    /// </summary>
+    public bool IsPointInsideCollider(Vector3 worldPoint)
+    {
+        if (m_Collider == null || !m_Collider.enabled)
+            return false;
+
+        Vector3 closest = m_Collider.ClosestPoint(worldPoint);
+        return (closest - worldPoint).sqrMagnitude < 0.0004f;
+    }
+
     public void ReportIlluminated()
     {
         if (!m_IsCaptured)
         {
             m_IsIlluminatedThisFrame = true;
+        }
+    }
+
+    /// <summary>
+    /// Called by GhostAI during Invisible Flee so the Normal Flashlight does nothing until the player closes within reveal distance.
+    /// </summary>
+    public void SetCloakCaptureImmunity(bool immune)
+    {
+        m_IsCloakCaptureImmune = immune;
+        if (immune)
+        {
+            m_CurrentGraceTimer = 0f;
         }
     }
 
@@ -632,6 +660,7 @@ public class GhostTarget : MonoBehaviour
         m_CurrentCaptureTime = 0f;
         m_CurrentGraceTimer = 0f;
         m_WallPhaseBlend = 0f;
+        m_IsCloakCaptureImmune = false;
         m_IsIlluminatedThisFrame = false;
         m_IsUVIlluminatedThisFrame = false;
 
@@ -679,23 +708,20 @@ public class GhostTarget : MonoBehaviour
 
         float progress = CurrentProgressNormalized;
         Color progressColor = Color.Lerp(startIlluminatedColor, nearCaptureColor, progress);
-        bool uvHit = m_IsUVIlluminatedThisFrame;
 
         Color activeRimColor = Color.Lerp(m_CustomRimColor, wallPhaseColor, m_WallPhaseBlend);
         float activeRimIntensity = Mathf.Max(m_CustomRimIntensity, m_WallPhaseBlend * 1.4f);
 
-        if (uvHit)
-        {
-            activeRimColor = s_UVSpectralRimColor;
-            activeRimIntensity = Mathf.Max(activeRimIntensity, 2.25f);
-        }
-
-        if (progress > 0.02f)
+        if (!m_IsCloakCaptureImmune && progress > 0.02f)
         {
             float rimWeight = illuminated ? progress : (progress * 0.75f);
             activeRimColor = Color.Lerp(activeRimColor, progressColor, rimWeight);
             activeRimIntensity = Mathf.Max(activeRimIntensity, rimWeight * 1.6f);
         }
+
+        // Spectral color language: Blue when exposed & visible without UV, Purple when cloaked & revealed by UV (0 on GhostDummies)
+        float spectralTintStrength = Mathf.Clamp01(m_CustomRimIntensity * 0.38f);
+        Color dissolveEdgeColor = m_CustomRimIntensity > 0.05f ? activeRimColor : wallPhaseColor;
 
         for (int i = 0; i < m_CachedRenderers.Count; i++)
         {
@@ -703,15 +729,11 @@ public class GhostTarget : MonoBehaviour
             if (entry.Renderer == null || !entry.Renderer.enabled)
                 continue;
 
-            Color baseStateColor = Color.Lerp(entry.OriginalColor, wallPhaseColor, m_WallPhaseBlend);
-            if (uvHit)
-            {
-                baseStateColor = Color.Lerp(baseStateColor, s_UVSpectralAuraColor, 0.75f);
-            }
-
+            Color spectralBase = Color.Lerp(entry.OriginalColor, m_CustomRimColor, spectralTintStrength);
+            Color baseStateColor = Color.Lerp(spectralBase, wallPhaseColor, m_WallPhaseBlend);
             Color finalColor = baseStateColor;
 
-            if (showVisualColorFeedback && (illuminated || m_CurrentCaptureTime > 0f))
+            if (showVisualColorFeedback && !m_IsCloakCaptureImmune && (illuminated || m_CurrentCaptureTime > 0f))
             {
                 // Smoothly blend back toward baseStateColor as m_CurrentCaptureTime gradually decays to 0!
                 float colorBlend = illuminated ? 1.0f : Mathf.Clamp01(progress * 1.25f);
@@ -731,21 +753,21 @@ public class GhostTarget : MonoBehaviour
             m_PropBlock.SetFloat(s_WipeModeId, m_WipeMode);
             m_PropBlock.SetFloat(s_LocalBoundsMinYId, entry.LocalMinY);
             m_PropBlock.SetFloat(s_LocalBoundsMaxYId, entry.LocalMaxY);
-            m_PropBlock.SetColor(s_DissolveEdgeColorId, wallPhaseColor);
+            m_PropBlock.SetColor(s_DissolveEdgeColorId, dissolveEdgeColor);
             m_PropBlock.SetColor(s_RimColorId, activeRimColor);
             m_PropBlock.SetFloat(s_RimIntensityId, activeRimIntensity);
 
-            if (uvHit)
-            {
-                m_PropBlock.SetColor(s_EmissionColorId, s_UVSpectralAuraColor * 0.85f);
-            }
-            else if (m_WallPhaseBlend > 0.01f)
+            if (m_WallPhaseBlend > 0.01f)
             {
                 m_PropBlock.SetColor(s_EmissionColorId, wallPhaseColor * (m_WallPhaseBlend * 0.55f));
             }
-            else if (illuminated && progress > 0.1f)
+            else if (!m_IsCloakCaptureImmune && illuminated && progress > 0.1f)
             {
                 m_PropBlock.SetColor(s_EmissionColorId, progressColor * (progress * 0.5f));
+            }
+            else if (m_CustomRimIntensity > 0.05f)
+            {
+                m_PropBlock.SetColor(s_EmissionColorId, m_CustomRimColor * 0.14f);
             }
             else
             {
