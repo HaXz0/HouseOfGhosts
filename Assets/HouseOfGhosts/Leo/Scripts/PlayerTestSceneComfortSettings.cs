@@ -88,6 +88,8 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
         m_PlayerCamera = xrOrigin.Camera != null ? xrOrigin.Camera : Camera.main;
         m_LeftWrist = FindChildByName(xrOrigin.transform, "Left Controller");
+        BindHandModel(xrOrigin.transform, "Left Controller", "VR_Hand_Blue_Left");
+        BindHandModel(xrOrigin.transform, "Right Controller", "VR_Hand_Blue_Right");
         m_InputManagers = FindObjectsByType<ControllerInputActionManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         m_MoveProviders = FindObjectsByType<DynamicMoveProvider>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         m_SnapTurnProviders = FindObjectsByType<SnapTurnProvider>(FindObjectsInactive.Include, FindObjectsSortMode.None);
@@ -568,6 +570,22 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         }
 
         return null;
+    }
+
+    void BindHandModel(Transform xrOrigin, string controllerName, string handName)
+    {
+        var controller = FindChildByName(xrOrigin, controllerName);
+        var hand = GameObject.Find(handName);
+        if (controller == null || hand == null)
+        {
+            Debug.LogWarning($"Could not bind {handName} to {controllerName}; check that both objects exist in PlayerTestScene.", this);
+            return;
+        }
+
+        hand.transform.SetParent(controller, false);
+        hand.transform.localPosition = Vector3.zero;
+        hand.transform.localRotation = Quaternion.identity;
+        hand.transform.localScale = Vector3.one;
     }
 
     static Gradient CreateGradient(Color color)
