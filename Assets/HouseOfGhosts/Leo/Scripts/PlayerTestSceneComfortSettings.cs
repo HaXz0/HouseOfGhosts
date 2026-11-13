@@ -529,7 +529,7 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         SetRect(textRect, position, size);
 
         var text = textObject.GetComponent<Text>();
-        text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         text.fontSize = fontSize;
         text.fontStyle = style;
         text.alignment = alignment;
