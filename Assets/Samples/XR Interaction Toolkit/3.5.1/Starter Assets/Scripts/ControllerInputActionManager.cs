@@ -83,6 +83,22 @@ namespace UnityEngine.XR.Interaction.Toolkit.Samples.StarterAssets
         bool m_SmoothTurnEnabled;
 
         [SerializeField]
+        [Tooltip("If true, turning remains available while continuous movement is enabled.")]
+        bool m_IndependentTurning;
+
+        [SerializeField]
+        [Tooltip("If false, this controller's movement action remains disabled.")]
+        bool m_UseMoveAction = true;
+
+        [SerializeField]
+        [Tooltip("If false, this controller cannot activate teleportation.")]
+        bool m_UseTeleportAction = true;
+
+        [SerializeField]
+        [Tooltip("If false, this controller's turn actions remain disabled.")]
+        bool m_UseTurnAction = true;
+
+        [SerializeField]
         [Tooltip("With the Near-Far Interactor, if true, teleport will be enabled during near interaction. If false, teleport will be disabled during near interaction.")]
         bool m_NearFarEnableTeleportDuringNearInteraction = true;
 
@@ -116,6 +132,26 @@ namespace UnityEngine.XR.Interaction.Toolkit.Samples.StarterAssets
             set
             {
                 m_SmoothTurnEnabled = value;
+                UpdateLocomotionActions();
+            }
+        }
+
+        public bool independentTurning
+        {
+            get => m_IndependentTurning;
+            set
+            {
+                m_IndependentTurning = value;
+                UpdateLocomotionActions();
+            }
+        }
+
+        public bool useMoveAction
+        {
+            get => m_UseMoveAction;
+            set
+            {
+                m_UseMoveAction = value;
                 UpdateLocomotionActions();
             }
         }
@@ -458,13 +494,14 @@ namespace UnityEngine.XR.Interaction.Toolkit.Samples.StarterAssets
         void UpdateLocomotionActions()
         {
             // Disable/enable Teleport and Turn when Move is enabled/disabled.
-            SetEnabled(m_Move, m_SmoothMotionEnabled);
-            SetEnabled(m_TeleportMode, !m_SmoothMotionEnabled);
-            SetEnabled(m_TeleportModeCancel, !m_SmoothMotionEnabled);
+            SetEnabled(m_Move, m_SmoothMotionEnabled && m_UseMoveAction);
+            var teleportEnabled = !m_SmoothMotionEnabled && m_UseTeleportAction;
+            SetEnabled(m_TeleportMode, teleportEnabled);
+            SetEnabled(m_TeleportModeCancel, teleportEnabled);
 
-            // Disable ability to turn when using continuous movement
-            SetEnabled(m_Turn, !m_SmoothMotionEnabled && m_SmoothTurnEnabled);
-            SetEnabled(m_SnapTurn, !m_SmoothMotionEnabled && !m_SmoothTurnEnabled);
+            var turnEnabled = !m_SmoothMotionEnabled || m_IndependentTurning;
+            SetEnabled(m_Turn, turnEnabled && m_UseTurnAction && m_SmoothTurnEnabled);
+            SetEnabled(m_SnapTurn, turnEnabled && m_UseTurnAction && !m_SmoothTurnEnabled);
         }
 
         void DisableTeleportActions()

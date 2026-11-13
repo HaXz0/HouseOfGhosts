@@ -67,5 +67,5 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "HouseOfGhosts.slnx"
+    "dotnet.defaultSolution": "HouseOfGhosts-Fresh.slnx"
 }
