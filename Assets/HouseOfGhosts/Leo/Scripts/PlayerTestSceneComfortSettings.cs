@@ -17,8 +17,8 @@ using UnityEngine.XR.Interaction.Toolkit.Interactors.Visuals;
 public class PlayerTestSceneComfortSettings : MonoBehaviour
 {
     [SerializeField] GameObject m_VignettePrefab;
-    [SerializeField] Vector3 m_PalmNormalLocalAxis = Vector3.up;
-    [SerializeField, Range(0f, 1f)] float m_PalmUpThreshold = 0.65f;
+    [SerializeField] Vector3 m_ControllerTopLocalAxis = Vector3.up;
+    [SerializeField, Range(0f, 1f)] float m_ControllerSideThreshold = 0.65f;
     [SerializeField, Range(0f, 1f)] float m_GazeThreshold = 0.75f;
     [SerializeField, Min(0f)] float m_HideGracePeriod = 0.25f;
     [SerializeField] Vector3 m_WristMenuOffset = new Vector3(0f, 0.12f, 0.03f);
@@ -117,16 +117,16 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
         var menuPosition = m_LeftWrist.TransformPoint(m_WristMenuOffset);
         m_CanvasRect.position = menuPosition;
-        var directionToCamera = m_PlayerCamera.transform.position - menuPosition;
-        if (directionToCamera.sqrMagnitude > 0.0001f)
-            m_CanvasRect.rotation = Quaternion.LookRotation(directionToCamera, m_PlayerCamera.transform.up);
+        var directionFromCamera = menuPosition - m_PlayerCamera.transform.position;
+        if (directionFromCamera.sqrMagnitude > 0.0001f)
+            m_CanvasRect.rotation = Quaternion.LookRotation(directionFromCamera, m_PlayerCamera.transform.up);
 
-        var palmNormal = m_LeftWrist.TransformDirection(m_PalmNormalLocalAxis.normalized);
-        var palmIsUp = Vector3.Dot(palmNormal, Vector3.up) >= m_PalmUpThreshold;
+        var controllerTop = m_LeftWrist.TransformDirection(m_ControllerTopLocalAxis.normalized);
+        var controllerFacesRight = Vector3.Dot(controllerTop, m_PlayerCamera.transform.right) >= m_ControllerSideThreshold;
         var gazeDirection = (menuPosition - m_PlayerCamera.transform.position).normalized;
         var isLookingAtWrist = Vector3.Dot(m_PlayerCamera.transform.forward, gazeDirection) >= m_GazeThreshold;
 
-        if (palmIsUp && isLookingAtWrist)
+        if (controllerFacesRight && isLookingAtWrist)
         {
             m_HideTimerStarted = false;
             SetMenuVisible(true);
