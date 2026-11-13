@@ -50,39 +50,110 @@ public class GhostTarget : MonoBehaviour
     [Tooltip("Color right before the 3-second capture finishes.")]
     [SerializeField] private Color nearCaptureColor = new Color(1f, 0.2f, 0.1f, 1f);
 
+    public enum CaptureVanishStyle
+    {
+        WindSweptDustDissolve = 0,
+        UpwardLightStretch = 1
+    }
+
     [Header("Stage 2: Supernatural Capture Vanish Effect")]
-    [Tooltip("If true, upon 3s capture the ghost performs a fast upward light-dissolve stretch instead of snapping off in 1 frame.")]
+    [Tooltip("If true, upon 3s capture the ghost performs a supernatural dissolve instead of snapping off in 1 frame.")]
     [SerializeField] private bool enableCaptureVanish = true;
 
-    [Tooltip("Duration (seconds) of the supernatural light-implosion / upward dissolve when captured.")]
-    [Range(0.1f, 1.2f)]
-    [SerializeField] private float captureVanishDuration = 0.38f;
+    [Tooltip("WindSweptDustDissolve crumbles the ghost into the directional dust cloud; UpwardLightStretch uses the legacy vertical stretch.")]
+    [SerializeField] private CaptureVanishStyle captureVanishStyle = CaptureVanishStyle.WindSweptDustDissolve;
 
-    [Tooltip("Bright supernatural flash color during the capture dissolve.")]
+    [Tooltip("Duration (seconds) of the supernatural dissolve when captured.")]
+    [Range(0.1f, 1.2f)]
+    [SerializeField] private float captureVanishDuration = 0.34f;
+
+    [Tooltip("Bright pale silver-white supernatural flash color during the capture dissolve.")]
     [SerializeField] private Color captureFlashColor = new Color(0.96f, 0.97f, 1.0f, 1.0f);
 
-    [Tooltip("Scale multiplier at the end of the capture vanish (thin & stretched upward into light).")]
+    [Tooltip("Downwind drift distance (meters) as the ghost body crumbles into the wind-swept dust cloud.")]
+    [Range(0f, 0.8f)]
+    [SerializeField] private float dustDriftDistance = 0.22f;
+
+    [Tooltip("Legacy scale multiplier at the end of UpwardLightStretch vanish.")]
     [SerializeField] private Vector3 captureStretchMultiplier = new Vector3(0.25f, 1.45f, 0.25f);
 
-    [Tooltip("Upward float distance (meters) during the 0.38s capture dissolve.")]
+    [Tooltip("Legacy upward float distance (meters) during UpwardLightStretch vanish.")]
     [SerializeField] private float captureRiseHeight = 0.35f;
 
     [Header("Stage 2B: Capture Particle VFX")]
-    [Tooltip("If true, plays the multi-layer supernatural particle burst when the 3s capture completes.")]
+    [Tooltip("If true, plays the supernatural particle dispersion when the 3s capture completes.")]
     [SerializeField] private bool enableCaptureParticles = true;
 
-    [Tooltip("Drag VFX_GhostCaptureBurst from 'Assets/HouseOfGhosts/Khamid/Partical systems' here.")]
+    [Tooltip("Drag VFX_GhostSoulDustDispersion (or VFX_GhostCaptureBurst) from 'Assets/HouseOfGhosts/Khamid/Partical systems' here.")]
     [SerializeField] private GameObject captureVfxPrefab;
 
-    [Tooltip("If true, capturing GhostDummy capsules also plays the particle burst for easy testing.")]
+    [Tooltip("If true, capturing GhostDummy capsules also plays the particle dispersion for easy testing.")]
     [SerializeField] private bool playParticlesOnTestDummies = true;
+
+    [Tooltip("If true, blasts the dust dispersion away from the player's flashlight beam with a natural sweeping cross-breeze.")]
+    [SerializeField] private bool orientVfxAwayFromPlayer = true;
+
+    [Tooltip("Horizontal cross-breeze angle (degrees) so the undulating wavy dust ridges sweep visibly across your VR view.")]
+    [Range(0f, 75f)]
+    [SerializeField] private float vfxCrosswindAngleDegrees = 38f;
 
     [Tooltip("Vertical offset (meters) from the ghost's center where the capture VFX spawns.")]
     [SerializeField] private float vfxHeightOffset = 0.0f;
 
-    [Tooltip("Overall size multiplier for the capture particle burst.")]
+    [Tooltip("Overall master size multiplier applied on top of round scaling.")]
     [Range(0.4f, 2.5f)]
     [SerializeField] private float vfxScaleMultiplier = 1.0f;
+
+    [Header("Stage 2C: Round 1-6 VFX Escalation & Round 6 Finale")]
+    [Tooltip("If true, the soul-dust VFX starts very small & brief in Round 1, grows each round, and unleashes a massive long-hanging finale in Round 6.")]
+    [SerializeField] private bool enableRoundVfxScaling = true;
+
+    [Tooltip("Cloud size multiplier in Round 1 (very small initial wisp).")]
+    [Range(0.2f, 1.2f)]
+    [SerializeField] private float round1ScaleMultiplier = 0.42f;
+
+    [Tooltip("Cloud size multiplier by Round 5 (right before the finale).")]
+    [Range(0.6f, 2.0f)]
+    [SerializeField] private float round5ScaleMultiplier = 1.26f;
+
+    [Tooltip("GRAND FINALE cloud size multiplier on Round 6 (final banishment).")]
+    [Range(1.0f, 3.0f)]
+    [SerializeField] private float round6FinaleScaleMultiplier = 1.75f;
+
+    [Tooltip("Particle lifetime/duration multiplier in Round 1 (~0.45 = ~0.8s quick puff).")]
+    [Range(0.2f, 1.5f)]
+    [SerializeField] private float round1DurationMultiplier = 0.45f;
+
+    [Tooltip("Particle lifetime/duration multiplier by Round 5 (~1.45 = ~2.65s).")]
+    [Range(0.5f, 3.0f)]
+    [SerializeField] private float round5DurationMultiplier = 1.45f;
+
+    [Tooltip("GRAND FINALE particle lifetime multiplier on Round 6 (~3.4 = ~6.2s weightless mid-air hang!).")]
+    [Range(1.5f, 6.0f)]
+    [SerializeField] private float round6FinaleDurationMultiplier = 3.40f;
+
+    [Tooltip("Dust burst count multiplier in Round 1 (light wisp).")]
+    [Range(0.15f, 1.0f)]
+    [SerializeField] private float round1DensityMultiplier = 0.35f;
+
+    [Tooltip("Dust burst count multiplier by Round 5.")]
+    [Range(0.5f, 1.8f)]
+    [SerializeField] private float round5DensityMultiplier = 1.20f;
+
+    [Tooltip("GRAND FINALE dust burst count multiplier on Round 6.")]
+    [Range(1.0f, 2.5f)]
+    [SerializeField] private float round6FinaleDensityMultiplier = 1.60f;
+
+    [Tooltip("Slower, dramatic ghost body crumble duration (seconds) on the final Round 6 capture.")]
+    [Range(0.2f, 1.5f)]
+    [SerializeField] private float round6FinaleVanishDuration = 0.62f;
+
+    [Tooltip("0 = Automatic (uses RoundManager on Ghost, or 1->6 cycle on Test Dummies). Set 1-6 to force a specific round for testing.")]
+    [Range(0, 6)]
+    [SerializeField] private int vfxRoundTestOverride = 0;
+
+    [Tooltip("If true on GhostDummy capsules, each dummy capture steps Round 1 -> 2 -> 3 -> 4 -> 5 -> 6 so you can compare all 6 rounds in a row!")]
+    [SerializeField] private bool cycleRoundsOnTestDummies = true;
 
     [Header("Events")]
     [Tooltip("Invoked every frame the ghost is illuminated, passing progress from 0.0 to 1.0.")]
@@ -117,12 +188,32 @@ public class GhostTarget : MonoBehaviour
     // Stage 1B stealth escape capture immunity (Normal Flashlight does nothing until <= reveal distance)
     private bool m_IsCloakCaptureImmune = false;
 
+    private struct VfxLayerBaseline
+    {
+        public ParticleSystem System;
+        public ParticleSystemRenderer Renderer;
+        public float Duration;
+        public float LifeMin;
+        public float LifeMax;
+        public float SpeedMin;
+        public float SpeedMax;
+        public float NoiseScroll;
+        public bool HasNoise;
+        public int MaxParticles;
+        public int BurstCount;
+        public ParticleSystem.Burst Burst0;
+        public ParticleSystem.Burst Burst1;
+    }
+
     // Stage 2 capture vanish animation state
     private bool m_IsPlayingCaptureVanish = false;
     private float m_CaptureVanishTimer = 0f;
+    private float m_ActiveCaptureVanishDuration = 0.34f;
+    private float m_ActiveDustDriftDistance = 0.22f;
     private Vector3 m_RestingScale = Vector3.one;
     private Vector3 m_CaptureStartPos;
     private Vector3 m_CaptureStartScale = Vector3.one;
+    private Vector3 m_LastVfxWindDirection = Vector3.forward;
 
     private bool m_IsIlluminatedThisFrame = false;
     private bool m_IsUVIlluminatedThisFrame = false;
@@ -131,12 +222,20 @@ public class GhostTarget : MonoBehaviour
     private Collider m_Collider;
     private readonly List<RendererCache> m_CachedRenderers = new List<RendererCache>();
     private MaterialPropertyBlock m_PropBlock;
+    private MaterialPropertyBlock m_VfxPropBlock;
     private Material m_CreatedMaterialInstance;
 
     // Pooled world-space Capture VFX instance (never snapped off when Ghost deactivates)
     private static Transform s_VfxPoolContainer;
+    private static int s_NextDummyPreviewRound = 1;
+    private static AnimationCurve s_StandardDecelCurve;
+    private static AnimationCurve s_FinaleSuspensionCurve;
+    private GameObject m_PooledSourcePrefab;
     private GameObject m_PooledCaptureVfxInstance;
     private ParticleSystem[] m_PooledVfxSystems;
+    private VfxLayerBaseline[] m_PooledVfxBaselines;
+
+    private static readonly int s_CloudScaleFactorId = Shader.PropertyToID("_CloudScaleFactor");
 
     private static readonly int s_BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int s_ColorId = Shader.PropertyToID("_Color");
@@ -170,16 +269,25 @@ public class GhostTarget : MonoBehaviour
         }
     }
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStaticDummyCycle()
+    {
+        s_NextDummyPreviewRound = 1;
+        s_VfxPoolContainer = null;
+    }
+
     private void Awake()
     {
         if (!isTestDummy)
         {
             Instance = this;
+            s_NextDummyPreviewRound = 1;
         }
 
         m_RestingScale = transform.localScale;
         m_Collider = GetComponent<Collider>();
         m_PropBlock = new MaterialPropertyBlock();
+        m_VfxPropBlock = new MaterialPropertyBlock();
         InitializeRenderersAndMaterial();
     }
 
@@ -374,14 +482,29 @@ public class GhostTarget : MonoBehaviour
     private void UpdateCaptureVanishAnimation()
     {
         m_CaptureVanishTimer += Time.deltaTime;
-        float duration = Mathf.Max(0.05f, captureVanishDuration);
+        float duration = Mathf.Max(0.05f, m_ActiveCaptureVanishDuration);
         float t = Mathf.Clamp01(m_CaptureVanishTimer / duration);
         float smoothT = t * t * (3f - 2f * t);
 
-        // Stretch upward and narrow into a beam of light while dissolving from feet to head
-        Vector3 targetScale = Vector3.Scale(m_CaptureStartScale, captureStretchMultiplier);
-        transform.localScale = Vector3.Lerp(m_CaptureStartScale, targetScale, smoothT);
-        transform.position = m_CaptureStartPos + Vector3.up * (captureRiseHeight * smoothT);
+        float wipeModeForVanish = 0.0f;
+        if (captureVanishStyle == CaptureVanishStyle.WindSweptDustDissolve)
+        {
+            // Crumble in place and drift gently downwind with the billowing silver-ash dust cloud
+            Vector3 dustExpandScale = Vector3.Scale(m_CaptureStartScale, new Vector3(1.06f, 1.02f, 1.06f));
+            transform.localScale = Vector3.Lerp(m_CaptureStartScale, dustExpandScale, smoothT);
+            transform.position = m_CaptureStartPos
+                + m_LastVfxWindDirection * (m_ActiveDustDriftDistance * smoothT)
+                + Vector3.up * (0.04f * smoothT);
+            wipeModeForVanish = 0.0f; // Mode 0 = Full-body noisy 3D crumble dissolve
+        }
+        else
+        {
+            // Legacy UpwardLightStretch: narrow into a vertical beam of light from feet to head
+            Vector3 targetScale = Vector3.Scale(m_CaptureStartScale, captureStretchMultiplier);
+            transform.localScale = Vector3.Lerp(m_CaptureStartScale, targetScale, smoothT);
+            transform.position = m_CaptureStartPos + Vector3.up * (captureRiseHeight * smoothT);
+            wipeModeForVanish = 2.0f; // Mode 2 = Ascend Capture Dissolve
+        }
 
         float vanishVisibility = Mathf.Clamp01(1.0f - smoothT);
 
@@ -406,13 +529,13 @@ public class GhostTarget : MonoBehaviour
             m_PropBlock.SetColor(s_BaseColorId, captureFlashColor);
             m_PropBlock.SetColor(s_ColorId, captureFlashColor);
             m_PropBlock.SetFloat(s_VisibilityId, vanishVisibility);
-            m_PropBlock.SetFloat(s_WipeModeId, 2.0f); // Mode 2 = Ascend Capture Dissolve
+            m_PropBlock.SetFloat(s_WipeModeId, wipeModeForVanish);
             m_PropBlock.SetFloat(s_LocalBoundsMinYId, entry.LocalMinY);
             m_PropBlock.SetFloat(s_LocalBoundsMaxYId, entry.LocalMaxY);
-            m_PropBlock.SetColor(s_DissolveEdgeColorId, captureFlashColor * 1.8f);
+            m_PropBlock.SetColor(s_DissolveEdgeColorId, captureFlashColor * 1.6f);
             m_PropBlock.SetColor(s_RimColorId, captureFlashColor);
-            m_PropBlock.SetFloat(s_RimIntensityId, 2.2f);
-            m_PropBlock.SetColor(s_EmissionColorId, captureFlashColor * (1.2f + smoothT * 1.4f));
+            m_PropBlock.SetFloat(s_RimIntensityId, 2.0f);
+            m_PropBlock.SetColor(s_EmissionColorId, captureFlashColor * (0.85f + smoothT * 1.15f));
 
             entry.Renderer.SetPropertyBlock(m_PropBlock);
         }
@@ -567,11 +690,15 @@ public class GhostTarget : MonoBehaviour
         }
 
         onCaptureProgress?.Invoke(1f);
-        Debug.Log($"[{gameObject.name}] *** CAPTURED! *** (3 continuous seconds completed)");
-        PlayCaptureVFX();
+        int activeRound = ResolveActiveVfxRound();
+        Debug.Log($"[{gameObject.name}] *** CAPTURED! *** (Round {activeRound} Soul-Dust VFX triggered)");
+        PlayCaptureVFXForRound(activeRound);
         onGhostCaptured?.Invoke();
 
-        if (enableCaptureVanish && captureVanishDuration > 0.05f)
+        m_ActiveCaptureVanishDuration = GetVanishDurationForRound(activeRound);
+        m_ActiveDustDriftDistance = GetDustDriftForRound(activeRound);
+
+        if (enableCaptureVanish && m_ActiveCaptureVanishDuration > 0.05f)
         {
             m_IsPlayingCaptureVanish = true;
             m_CaptureVanishTimer = 0f;
@@ -591,13 +718,45 @@ public class GhostTarget : MonoBehaviour
         }
     }
 
+    private void EnsureDecelCurvesInitialized()
+    {
+        if (s_StandardDecelCurve == null)
+        {
+            s_StandardDecelCurve = new AnimationCurve(
+                new Keyframe(0.00f, 1.00f, 0f, -1.2f),
+                new Keyframe(0.45f, 0.48f, -0.7f, -0.6f),
+                new Keyframe(1.00f, 0.16f, -0.3f, 0f)
+            );
+        }
+
+        if (s_FinaleSuspensionCurve == null)
+        {
+            // Rapid initial room-filling burst (first ~0.8s), then cushions to a weightless mid-air shimmer for ~5.4s!
+            s_FinaleSuspensionCurve = new AnimationCurve(
+                new Keyframe(0.00f, 1.00f, 0f, -5.8f),
+                new Keyframe(0.13f, 0.22f, -1.8f, -0.9f),
+                new Keyframe(0.28f, 0.035f, -0.25f, -0.05f),
+                new Keyframe(1.00f, 0.015f, -0.01f, 0f)
+            );
+        }
+    }
+
     private void EnsureCaptureVfxPooled()
     {
-        if (!enableCaptureParticles || captureVfxPrefab == null || m_PooledCaptureVfxInstance != null)
+        if (!enableCaptureParticles || captureVfxPrefab == null)
             return;
 
         if (isTestDummy && !playParticlesOnTestDummies)
             return;
+
+        if (m_PooledCaptureVfxInstance != null && m_PooledSourcePrefab == captureVfxPrefab)
+            return;
+
+        if (m_PooledCaptureVfxInstance != null)
+        {
+            Destroy(m_PooledCaptureVfxInstance);
+            m_PooledCaptureVfxInstance = null;
+        }
 
         if (s_VfxPoolContainer == null)
         {
@@ -605,17 +764,279 @@ public class GhostTarget : MonoBehaviour
             s_VfxPoolContainer = containerObj.transform;
         }
 
+        EnsureDecelCurvesInitialized();
+        if (m_VfxPropBlock == null)
+        {
+            m_VfxPropBlock = new MaterialPropertyBlock();
+        }
+
+        m_PooledSourcePrefab = captureVfxPrefab;
         m_PooledCaptureVfxInstance = Instantiate(captureVfxPrefab, s_VfxPoolContainer);
         m_PooledCaptureVfxInstance.name = $"{gameObject.name}_CaptureVFX";
         m_PooledVfxSystems = m_PooledCaptureVfxInstance.GetComponentsInChildren<ParticleSystem>(true);
+
+        // Cache baseline particle curves & burst counts once for zero-GC runtime Round 1-6 scaling
+        m_PooledVfxBaselines = new VfxLayerBaseline[m_PooledVfxSystems.Length];
+        ParticleSystem.Burst[] tempBursts = new ParticleSystem.Burst[4];
+
+        for (int i = 0; i < m_PooledVfxSystems.Length; i++)
+        {
+            ParticleSystem ps = m_PooledVfxSystems[i];
+            var main = ps.main;
+            main.scalingMode = ParticleSystemScalingMode.Hierarchy;
+
+            var emission = ps.emission;
+            int bCount = emission.GetBursts(tempBursts);
+
+            var noise = ps.noise;
+            m_PooledVfxBaselines[i] = new VfxLayerBaseline
+            {
+                System = ps,
+                Renderer = ps.GetComponent<ParticleSystemRenderer>(),
+                Duration = main.duration,
+                LifeMin = main.startLifetime.mode == ParticleSystemCurveMode.TwoConstants ? main.startLifetime.constantMin : main.startLifetime.constant,
+                LifeMax = main.startLifetime.mode == ParticleSystemCurveMode.TwoConstants ? main.startLifetime.constantMax : main.startLifetime.constant,
+                SpeedMin = main.startSpeed.mode == ParticleSystemCurveMode.TwoConstants ? main.startSpeed.constantMin : main.startSpeed.constant,
+                SpeedMax = main.startSpeed.mode == ParticleSystemCurveMode.TwoConstants ? main.startSpeed.constantMax : main.startSpeed.constant,
+                NoiseScroll = noise.enabled ? noise.scrollSpeed.constant : 0f,
+                HasNoise = noise.enabled,
+                MaxParticles = main.maxParticles,
+                BurstCount = bCount,
+                Burst0 = bCount > 0 ? tempBursts[0] : default,
+                Burst1 = bCount > 1 ? tempBursts[1] : default
+            };
+        }
+
         m_PooledCaptureVfxInstance.SetActive(false);
     }
 
+    private int ResolveActiveVfxRound()
+    {
+        if (!enableRoundVfxScaling)
+            return 4;
+
+        if (vfxRoundTestOverride >= 1 && vfxRoundTestOverride <= 6)
+            return vfxRoundTestOverride;
+
+        if (isTestDummy && cycleRoundsOnTestDummies)
+        {
+            int roundToPlay = s_NextDummyPreviewRound;
+            s_NextDummyPreviewRound = (s_NextDummyPreviewRound % 6) + 1;
+            return roundToPlay;
+        }
+
+        if (RoundManager.Instance != null)
+        {
+            int total = Mathf.Max(1, RoundManager.Instance.TotalRounds);
+            return Mathf.Clamp(RoundManager.Instance.CurrentRound, 1, total);
+        }
+
+        return 4;
+    }
+
+    private float GetVanishDurationForRound(int roundNumber)
+    {
+        if (!enableRoundVfxScaling)
+            return captureVanishDuration;
+
+        int finaleRound = RoundManager.Instance != null ? Mathf.Max(2, RoundManager.Instance.TotalRounds) : 6;
+        if (roundNumber >= finaleRound)
+            return round6FinaleVanishDuration;
+
+        float t = Mathf.Clamp01((roundNumber - 1) / (float)Mathf.Max(1, finaleRound - 2));
+        return Mathf.Lerp(0.22f, Mathf.Max(0.24f, captureVanishDuration * 1.18f), t);
+    }
+
+    private float GetDustDriftForRound(int roundNumber)
+    {
+        if (!enableRoundVfxScaling)
+            return dustDriftDistance;
+
+        int finaleRound = RoundManager.Instance != null ? Mathf.Max(2, RoundManager.Instance.TotalRounds) : 6;
+        if (roundNumber >= finaleRound)
+            return dustDriftDistance * 1.55f;
+
+        float t = Mathf.Clamp01((roundNumber - 1) / (float)Mathf.Max(1, finaleRound - 2));
+        return dustDriftDistance * Mathf.Lerp(0.55f, 1.15f, t);
+    }
+
+    private void ComputeRoundVfxMultipliers(int roundNumber, out float scaleMult, out float durationMult, out float densityMult, out float windReachMult, out bool isFinale)
+    {
+        if (!enableRoundVfxScaling)
+        {
+            scaleMult = 1.0f;
+            durationMult = 1.0f;
+            densityMult = 1.0f;
+            windReachMult = 1.0f;
+            isFinale = false;
+            return;
+        }
+
+        int finaleRound = RoundManager.Instance != null ? Mathf.Max(2, RoundManager.Instance.TotalRounds) : 6;
+        if (roundNumber >= finaleRound)
+        {
+            scaleMult = round6FinaleScaleMultiplier;
+            durationMult = round6FinaleDurationMultiplier;
+            densityMult = round6FinaleDensityMultiplier;
+            windReachMult = 1.48f;
+            isFinale = true;
+            return;
+        }
+
+        // Smooth interpolation across Rounds 1 -> 5
+        float t = Mathf.Clamp01((roundNumber - 1) / (float)Mathf.Max(1, finaleRound - 2));
+        scaleMult = Mathf.Lerp(round1ScaleMultiplier, round5ScaleMultiplier, t);
+        durationMult = Mathf.Lerp(round1DurationMultiplier, round5DurationMultiplier, t);
+        densityMult = Mathf.Lerp(round1DensityMultiplier, round5DensityMultiplier, t);
+        windReachMult = Mathf.Lerp(0.58f, 1.18f, t);
+        isFinale = false;
+    }
+
+    private void ApplyRoundScalingToPooledVfx(int roundNumber)
+    {
+        if (m_PooledVfxBaselines == null || m_PooledCaptureVfxInstance == null)
+            return;
+
+        EnsureDecelCurvesInitialized();
+        ComputeRoundVfxMultipliers(roundNumber, out float roundScale, out float durationMult, out float densityMult, out float windReachMult, out bool isFinale);
+
+        float finalScale = Mathf.Max(0.15f, vfxScaleMultiplier * roundScale);
+        m_PooledCaptureVfxInstance.transform.localScale = Vector3.one * finalScale;
+
+        // Hierarchy scaling already multiplies startSpeed by finalScale, so compensate cleanly for exact wind reach!
+        float localSpeedRatio = windReachMult / Mathf.Max(0.2f, roundScale);
+        AnimationCurve activeSpeedCurve = isFinale ? s_FinaleSuspensionCurve : s_StandardDecelCurve;
+
+        if (m_VfxPropBlock == null)
+        {
+            m_VfxPropBlock = new MaterialPropertyBlock();
+        }
+
+        for (int i = 0; i < m_PooledVfxBaselines.Length; i++)
+        {
+            VfxLayerBaseline b = m_PooledVfxBaselines[i];
+            if (b.System == null)
+                continue;
+
+            var main = b.System.main;
+            main.duration = Mathf.Max(0.4f, b.Duration * durationMult);
+            main.startLifetime = new ParticleSystem.MinMaxCurve(
+                Mathf.Max(0.18f, b.LifeMin * durationMult),
+                Mathf.Max(0.28f, b.LifeMax * durationMult)
+            );
+            main.startSpeed = new ParticleSystem.MinMaxCurve(
+                b.SpeedMin * localSpeedRatio,
+                b.SpeedMax * localSpeedRatio
+            );
+            main.maxParticles = Mathf.Max(16, Mathf.CeilToInt(b.MaxParticles * Mathf.Max(1f, densityMult * 1.15f)));
+
+            var vel = b.System.velocityOverLifetime;
+            if (vel.enabled)
+            {
+                vel.speedModifier = new ParticleSystem.MinMaxCurve(1.0f, activeSpeedCurve);
+            }
+
+            if (b.HasNoise)
+            {
+                var noise = b.System.noise;
+                noise.scrollSpeed = isFinale ? (b.NoiseScroll * 0.58f) : b.NoiseScroll;
+            }
+
+            if (b.BurstCount > 0)
+            {
+                var emission = b.System.emission;
+                ParticleSystem.Burst b0 = b.Burst0;
+                b0.count = Mathf.Max(2, Mathf.RoundToInt(b.Burst0.count.constant * densityMult));
+                emission.SetBurst(0, b0);
+
+                if (b.BurstCount > 1)
+                {
+                    ParticleSystem.Burst b1 = b.Burst1;
+                    b1.count = Mathf.Max(1, Mathf.RoundToInt(b.Burst1.count.constant * densityMult));
+                    emission.SetBurst(1, b1);
+                }
+            }
+
+            if (b.Renderer != null)
+            {
+                b.Renderer.GetPropertyBlock(m_VfxPropBlock);
+                m_VfxPropBlock.SetFloat(s_CloudScaleFactorId, finalScale);
+                b.Renderer.SetPropertyBlock(m_VfxPropBlock);
+            }
+        }
+    }
+
+    private Vector3 ComputeVfxWindDirection(Vector3 spawnPos)
+    {
+        Vector3 awayDir = -transform.forward;
+        Camera mainCam = Camera.main;
+        if (mainCam != null)
+        {
+            Vector3 fromPlayer = spawnPos - mainCam.transform.position;
+            fromPlayer.y = 0f;
+            if (fromPlayer.sqrMagnitude > 0.001f)
+            {
+                awayDir = fromPlayer.normalized;
+            }
+        }
+
+        awayDir.y = 0f;
+        if (awayDir.sqrMagnitude < 0.001f)
+        {
+            awayDir = Vector3.forward;
+        }
+        else
+        {
+            awayDir.Normalize();
+        }
+
+        if (vfxCrosswindAngleDegrees <= 0.5f)
+        {
+            return awayDir;
+        }
+
+        // Sweep slightly sideways into open room space so the undulating wavy ridges spread clearly across your VR view
+        Vector3 rightSweep = Quaternion.Euler(0f, vfxCrosswindAngleDegrees, 0f) * awayDir;
+        Vector3 leftSweep = Quaternion.Euler(0f, -vfxCrosswindAngleDegrees, 0f) * awayDir;
+
+        float checkDist = 1.5f;
+        float rightClearance = Physics.Raycast(spawnPos, rightSweep, out RaycastHit hitRight, checkDist, ~0, QueryTriggerInteraction.Ignore)
+            ? hitRight.distance
+            : checkDist;
+        float leftClearance = Physics.Raycast(spawnPos, leftSweep, out RaycastHit hitLeft, checkDist, ~0, QueryTriggerInteraction.Ignore)
+            ? hitLeft.distance
+            : checkDist;
+
+        if (Mathf.Abs(rightClearance - leftClearance) > 0.15f)
+        {
+            return rightClearance >= leftClearance ? rightSweep : leftSweep;
+        }
+
+        return (Time.frameCount & 1) == 0 ? rightSweep : leftSweep;
+    }
+
     /// <summary>
-    /// Right-click GhostTarget in Play Mode and choose "Preview Capture VFX Now" to test the particle burst anytime!
+    /// Right-click GhostTarget in Play Mode and choose "Preview Capture VFX Now" to test the particle dispersion anytime!
     /// </summary>
     [ContextMenu("Preview Capture VFX Now")]
     public void PlayCaptureVFX()
+    {
+        PlayCaptureVFXForRound(ResolveActiveVfxRound());
+    }
+
+    [ContextMenu("Preview Round 1 VFX (Tiny Wisp)")]
+    public void PreviewRound1VFX()
+    {
+        PlayCaptureVFXForRound(1);
+    }
+
+    [ContextMenu("Preview Round 6 VFX (Grand Finale)")]
+    public void PreviewRound6FinaleVFX()
+    {
+        PlayCaptureVFXForRound(6);
+    }
+
+    public void PlayCaptureVFXForRound(int roundNumber)
     {
         if (!Application.isPlaying || !enableCaptureParticles || captureVfxPrefab == null)
             return;
@@ -628,9 +1049,20 @@ public class GhostTarget : MonoBehaviour
             return;
 
         Vector3 spawnPos = TargetCenter + Vector3.up * vfxHeightOffset;
+        m_LastVfxWindDirection = orientVfxAwayFromPlayer ? ComputeVfxWindDirection(spawnPos) : Vector3.forward;
+
         m_PooledCaptureVfxInstance.transform.position = spawnPos;
-        m_PooledCaptureVfxInstance.transform.rotation = Quaternion.identity;
-        m_PooledCaptureVfxInstance.transform.localScale = Vector3.one * Mathf.Max(0.1f, vfxScaleMultiplier);
+        m_PooledCaptureVfxInstance.transform.rotation = orientVfxAwayFromPlayer
+            ? Quaternion.LookRotation(m_LastVfxWindDirection, Vector3.up)
+            : Quaternion.identity;
+
+        ApplyRoundScalingToPooledVfx(roundNumber);
+
+        if (showDebugLogs && isTestDummy && enableRoundVfxScaling)
+        {
+            string finaleTag = roundNumber >= 6 ? " [GRAND FINALE!]" : "";
+            Debug.Log($"[{gameObject.name}] Previewing Round {roundNumber}/6 Soul-Dust Dispersion{finaleTag}");
+        }
 
         if (!m_PooledCaptureVfxInstance.activeSelf)
         {

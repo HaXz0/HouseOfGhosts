@@ -149,6 +149,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GhostHidingSpot
   spotName: Hiding Spot
+  customPeekPoint: {fileID: 0}
 --- !u!4 &6258405
 Transform:
   m_ObjectHideFlags: 0
@@ -530,6 +531,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GhostHidingSpot
   spotName: Hiding Spot
+  customPeekPoint: {fileID: 0}
 --- !u!4 &94449943
 Transform:
   m_ObjectHideFlags: 0
@@ -591,15 +593,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -614,7 +633,7 @@ CapsuleCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 97822597}
-  m_Material: {fileID: 779111028}
+  m_Material: {fileID: 1709299150}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -715,6 +734,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GhostAI
   currentState: 0
+  currentLurkSubState: 0
   activeRoundNumber: 1
   isPhasingThroughWall: 0
   isCloakedWhileFleeing: 0
@@ -732,6 +752,19 @@ MonoBehaviour:
   enableCloakedFlee: 1
   cloakedFleeChance: 0.15
   cloakedFleeRevealDistance: 1.5
+  enableLurking: 1
+  lurkStartDelayRange: {x: 4.5, y: 7.5}
+  maxLuresBeforeStalk: 2
+  lurkSearchRadius: 9
+  lurkMoveSpeed: 1.75
+  lurkRetreatSpeed: 2.65
+  lurkPeekLeanAngle: 14
+  lurkSpectralVisibility: 0.78
+  lurkEyeContactAngle: 25
+  lurkEyeContactHoldSeconds: 0.5
+  lurkMaxPeekDuration: 5.5
+  enableLateRoundFeintRelocate: 1
+  lateRoundFeintChance: 0.35
   enableBeamStruggle: 1
   maxBeamSlowdownFactor: 0.45
   struggleTrembleAmplitude: 0.02
@@ -780,7 +813,7 @@ MonoBehaviour:
   ghostOutlinePadding: 1.14
   customGhostSilhouetteTexture: {fileID: 0}
   enableStalking: 1
-  stalkStartDelaySeconds: 12
+  stalkStartDelaySeconds: 18
   stalkSpeed: 1.3
   stalkStopDistance: 3
   stalkSpottedViewAngle: 42
@@ -967,15 +1000,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -1235,15 +1285,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -1510,15 +1577,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -1905,15 +1989,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -2061,15 +2162,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -2441,15 +2559,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -2597,15 +2732,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -3162,15 +3314,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -3623,15 +3792,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -3719,19 +3905,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 777797985}
   m_Mesh: {fileID: 10208, guid: 0000000000000000e000000000000000, type: 0}
---- !u!134 &779111028
-PhysicsMaterial:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_Name: ' (Instance) (Instance) (Instance)'
-  serializedVersion: 2
-  m_DynamicFriction: 0.6
-  m_StaticFriction: 0.6
-  m_Bounciness: 0
-  m_FrictionCombine: 0
-  m_BounceCombine: 0
 --- !u!1 &794443611
 GameObject:
   m_ObjectHideFlags: 0
@@ -3792,15 +3965,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -4030,6 +4220,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GhostHidingSpot
   spotName: Hiding Spot
+  customPeekPoint: {fileID: 0}
 --- !u!4 &827121146
 Transform:
   m_ObjectHideFlags: 0
@@ -4441,15 +4632,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -4597,15 +4805,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -4766,15 +4991,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -4892,6 +5134,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GhostHidingSpot
   spotName: Hiding Spot
+  customPeekPoint: {fileID: 0}
 --- !u!4 &1198478472
 Transform:
   m_ObjectHideFlags: 0
@@ -5221,15 +5464,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -6512,15 +6772,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -6720,6 +6997,19 @@ Transform:
   m_Children: []
   m_Father: {fileID: 214038198}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!134 &1709299150
+PhysicsMaterial:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: ' (Instance) (Instance) (Instance) (Instance)'
+  serializedVersion: 2
+  m_DynamicFriction: 0.6
+  m_StaticFriction: 0.6
+  m_Bounciness: 0
+  m_FrictionCombine: 0
+  m_BounceCombine: 0
 --- !u!1 &1755728322
 GameObject:
   m_ObjectHideFlags: 0
@@ -7004,15 +7294,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []
@@ -8168,15 +8475,32 @@ MonoBehaviour:
   startIlluminatedColor: {r: 1, g: 0.9, b: 0.3, a: 1}
   nearCaptureColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   enableCaptureVanish: 1
-  captureVanishDuration: 0.38
+  captureVanishStyle: 0
+  captureVanishDuration: 0.34
   captureFlashColor: {r: 0.96, g: 0.97, b: 1, a: 1}
+  dustDriftDistance: 0.22
   captureStretchMultiplier: {x: 0.25, y: 1.45, z: 0.25}
   captureRiseHeight: 0.35
   enableCaptureParticles: 1
-  captureVfxPrefab: {fileID: 1538069523915284751, guid: 7c392b1ea8ae4c247914969ea3374d63, type: 3}
+  captureVfxPrefab: {fileID: 7457343996249540364, guid: 53fee92f3df2ebd4a8454f511b9db3c5, type: 3}
   playParticlesOnTestDummies: 1
+  orientVfxAwayFromPlayer: 1
+  vfxCrosswindAngleDegrees: 38
   vfxHeightOffset: 0
   vfxScaleMultiplier: 1
+  enableRoundVfxScaling: 1
+  round1ScaleMultiplier: 0.42
+  round5ScaleMultiplier: 1.26
+  round6FinaleScaleMultiplier: 1.75
+  round1DurationMultiplier: 0.45
+  round5DurationMultiplier: 1.45
+  round6FinaleDurationMultiplier: 3.4
+  round1DensityMultiplier: 0.35
+  round5DensityMultiplier: 1.2
+  round6FinaleDensityMultiplier: 1.6
+  round6FinaleVanishDuration: 0.62
+  vfxRoundTestOverride: 0
+  cycleRoundsOnTestDummies: 1
   onCaptureProgress:
     m_PersistentCalls:
       m_Calls: []

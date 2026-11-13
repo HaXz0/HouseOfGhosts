@@ -8,11 +8,20 @@ public class GhostAI : MonoBehaviour
 {
     public enum GhostState
     {
-        Hidden,
-        Stalking,       // Creeping closer to the player to pressure the Danger Meter
-        WatchingPlayer, // Behaviour A: Brief pause and stare
-        Fleeing,        // Behaviour B or after staring
-        Captured
+        Hidden = 0,
+        Stalking = 1,       // Creeping closer to the player to pressure the Danger Meter
+        WatchingPlayer = 2, // Behaviour A: Brief pause and stare
+        Fleeing = 3,        // Behaviour B or after staring
+        Captured = 4,
+        Lurking = 5         // Stage 1C: Doorway / Corner-Edge Peek & Bait
+    }
+
+    public enum LurkSubState
+    {
+        None = 0,
+        CreepingToCorner = 1,
+        PeekingAtPlayer = 2,
+        DuckingBack = 3
     }
 
     public enum WallPhaseTierOverride
@@ -24,6 +33,7 @@ public class GhostAI : MonoBehaviour
 
     [Header("Current State (Read Only)")]
     [SerializeField] private GhostState currentState = GhostState.Hidden;
+    [SerializeField] private LurkSubState currentLurkSubState = LurkSubState.None;
     [SerializeField] private int activeRoundNumber = 1;
     [SerializeField] private bool isPhasingThroughWall = false;
     [SerializeField] private bool isCloakedWhileFleeing = false;
@@ -74,6 +84,50 @@ public class GhostAI : MonoBehaviour
 
     [Tooltip("Distance in meters (default 1.5m): Normal Flashlight does NOTHING to an invisible fleeing ghost until you get within this distance AND aim the flashlight at her!")]
     [SerializeField] private float cloakedFleeRevealDistance = 1.5f;
+
+    [Header("Stage 1C: Ghost Lurking & Corner-Peek Luring")]
+    [Tooltip("If true, while Hidden the ghost creeps to nearby doorway/wall corners, leans out in Blue to watch you, and ducks back behind cover when you look at her to bait you into her 4m Danger Meter zone!")]
+    [SerializeField] private bool enableLurking = true;
+
+    [Tooltip("Min/Max seconds hidden before she creeps to a nearby wall corner/doorway to peek at you.")]
+    [SerializeField] private Vector2 lurkStartDelayRange = new Vector2(4.5f, 7.5f);
+
+    [Tooltip("How many corner-peek lures she performs before escalating to full Stalking if you ignore her.")]
+    [Range(1, 5)]
+    [SerializeField] private int maxLuresBeforeStalk = 2;
+
+    [Tooltip("Max radius (meters) from her hiding spot to search for a doorway/wall-corner with a clear sightline to the player.")]
+    [SerializeField] private float lurkSearchRadius = 9.0f;
+
+    [Tooltip("Quiet glide speed (m/s) when creeping from her hiding spot to the corner peek edge.")]
+    [SerializeField] private float lurkMoveSpeed = 1.75f;
+
+    [Tooltip("Quick retreat speed (m/s) when ducking back behind the wall after you spot her peeking!")]
+    [SerializeField] private float lurkRetreatSpeed = 2.65f;
+
+    [Tooltip("Upper-body corner lean angle (degrees) tilting out around the doorframe/wall edge!")]
+    [Range(0f, 28f)]
+    [SerializeField] private float lurkPeekLeanAngle = 14.0f;
+
+    [Tooltip("Spectral BLUE visibility (0.78 = 78%) while peeking around a corner so you spot her without UV.")]
+    [Range(0.3f, 1.0f)]
+    [SerializeField] private float lurkSpectralVisibility = 0.78f;
+
+    [Tooltip("Angle (degrees) from center of your VR view within which looking directly at the peeking ghost makes her freeze & duck back!")]
+    [SerializeField] private float lurkEyeContactAngle = 25.0f;
+
+    [Tooltip("Seconds of chilling eye-contact freeze in Round 1 before she ducks behind the wall (tightens automatically in later rounds!).")]
+    [SerializeField] private float lurkEyeContactHoldSeconds = 0.50f;
+
+    [Tooltip("Max seconds she holds a corner peek before quietly slipping back if you never turn toward her.")]
+    [SerializeField] private float lurkMaxPeekDuration = 5.5f;
+
+    [Tooltip("If true, in Late Rounds (4-6) she has a chance upon ducking behind cover to cloak & sneak away to another hiding spot leaving PURPLE UV footprints!")]
+    [SerializeField] private bool enableLateRoundFeintRelocate = true;
+
+    [Tooltip("Probability (0.35 = 35%) in Late Rounds (4-6) to perform an Invisible Feint Relocation after ducking behind the wall.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float lateRoundFeintChance = 0.35f;
 
     [Header("Stage 2: Flashlight Beam-Lock Struggle")]
     [Tooltip("If true, holding the Normal beam on the ghost makes her visibly tremble and drags down her flee speed as capture nears 3s.")]
@@ -235,8 +289,8 @@ public class GhostAI : MonoBehaviour
     [Tooltip("If true, when the player takes too long to find the ghost, she creeps toward the player to drain the Danger Meter.")]
     [SerializeField] private bool enableStalking = true;
 
-    [Tooltip("Seconds of hiding without being found before she starts creeping toward you.")]
-    [SerializeField] private float stalkStartDelaySeconds = 12.0f;
+    [Tooltip("Seconds of hiding without being found before she escalates from Lurking to creeping straight toward you.")]
+    [SerializeField] private float stalkStartDelaySeconds = 16.0f;
 
     [Tooltip("Slow, eerie speed (meters/second) while creeping toward the player.")]
     [SerializeField] private float stalkSpeed = 1.3f;
@@ -333,17 +387,59 @@ public class GhostAI : MonoBehaviour
 
     private bool m_ForceNextEscapeCloaked = false;
 
+    // Stage 1C: Ghost Lurking & Corner-Peek Luring state
+    private Vector3 m_LurkOriginPosition;
+    private Vector3 m_LurkPeekPosition;
+    private Vector3 m_LurkCorePosition;
+    private Vector3 m_LurkLeanOpenDirection = Vector3.right;
+    private float m_CurrentLeanBlend = 0f;
+    private float m_NextLurkTriggerTime = 5.5f;
+    private float m_LurkHoldTimer = 0f;
+    private float m_LurkEyeContactTimer = 0f;
+    private bool m_HasMadeLurkEyeContact = false;
+    private bool m_HasDroppedLurkCornerTrace = false;
+    private int m_LuresPerformedThisHide = 0;
+
+    private static readonly float[] s_LurkSearchRingFractions = { 0.16f, 0.28f, 0.42f, 0.58f, 0.78f, 1.0f };
+
     public GhostState CurrentState => currentState;
+    public LurkSubState CurrentLurkSubState => currentLurkSubState;
     public bool IsPhasingThroughWall => isPhasingThroughWall;
     public bool IsCloakedWhileFleeing => isCloakedWhileFleeing;
     public float CurrentSpectralVisibility => currentSpectralVisibility;
 
     /// <summary>
-    /// True whenever the ghost is operating invisibly (Hidden or Invisible Flee) -> Purple UV aura & Purple UV traces!
-    /// False whenever the ghost is exposed/visible (Stalking, WatchingPlayer, or Visible Flee) -> Blue body & Blue UV traces!
+    /// True when the ghost is peeking out at a corner and the player has made eye contact with her.
+    /// </summary>
+    public bool IsPlayerSpottingLurkPeek =>
+        currentState == GhostState.Lurking &&
+        currentLurkSubState == LurkSubState.PeekingAtPlayer &&
+        m_HasMadeLurkEyeContact;
+
+    /// <summary>
+    /// True whenever the ghost is operating invisibly (Hidden, Invisible Flee, or sneaking behind cover before/after a Lurk peek) -> Purple UV aura & Purple UV traces!
+    /// False whenever the ghost is exposed/visible (Lurk Corner Peek, Stalking, WatchingPlayer, or Visible Flee) -> Blue body & Blue UV traces!
     /// </summary>
     public bool IsGhostCurrentlyInvisible =>
-        cloakWhileHidden && (currentState == GhostState.Hidden || (currentState == GhostState.Fleeing && isCloakedWhileFleeing));
+        cloakWhileHidden && (currentState == GhostState.Hidden || (currentState == GhostState.Fleeing && isCloakedWhileFleeing) || IsLurkPhaseCloaked());
+
+    private bool IsLurkPhaseCloaked()
+    {
+        if (currentState != GhostState.Lurking)
+            return false;
+
+        Vector2 coreXZ = new Vector2(m_LurkCorePosition.x, m_LurkCorePosition.z);
+        Vector2 peekXZ = new Vector2(m_LurkPeekPosition.x, m_LurkPeekPosition.z);
+        float distToCorner = Vector2.Distance(coreXZ, peekXZ);
+
+        if (currentLurkSubState == LurkSubState.CreepingToCorner)
+            return distToCorner > 0.95f;
+
+        if (currentLurkSubState == LurkSubState.DuckingBack)
+            return distToCorner > 0.55f;
+
+        return false;
+    }
 
     private Color GetActiveTraceUVColor() =>
         IsGhostCurrentlyInvisible ? invisibleStateTraceUVColor : visibleStateTraceUVColor;
@@ -405,6 +501,7 @@ public class GhostAI : MonoBehaviour
 
         m_LastTraceDropPosition = transform.position;
         m_PreviousChestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
+        ScheduleNextLurkDelay();
 
         if (m_GhostTarget == null || !m_GhostTarget.IsTestDummy)
         {
@@ -468,6 +565,10 @@ public class GhostAI : MonoBehaviour
                 UpdateHidden();
                 break;
 
+            case GhostState.Lurking:
+                UpdateLurking();
+                break;
+
             case GhostState.Stalking:
                 UpdateStalking();
                 break;
@@ -483,7 +584,7 @@ public class GhostAI : MonoBehaviour
     }
 
     // =========================================================================
-    // STAGE 1 & 1B: CLOAK, INVISIBLE FLEE, BLUE (VISIBLE) VS PURPLE (INVISIBLE)
+    // STAGE 1, 1B & 1C: CLOAK, INVISIBLE FLEE, LURK PEEK & BLUE VS PURPLE
     // =========================================================================
     private void UpdateCloakAndSpectralPresence()
     {
@@ -524,9 +625,10 @@ public class GhostAI : MonoBehaviour
             isCloakedWhileFleeing = false;
         }
 
+        bool isCloakImmuneNow = (currentState == GhostState.Fleeing && isCloakedWhileFleeing) || IsLurkPhaseCloaked();
         if (m_GhostTarget != null)
         {
-            m_GhostTarget.SetCloakCaptureImmunity(currentState == GhostState.Fleeing && isCloakedWhileFleeing);
+            m_GhostTarget.SetCloakCaptureImmunity(isCloakImmuneNow);
         }
 
         float targetVisibility = 1.0f;
@@ -534,7 +636,7 @@ public class GhostAI : MonoBehaviour
         Color rimColor = exposedVisibleBlueColor;
         float rimIntensity = 1.45f;
 
-        if (currentState == GhostState.Hidden || (currentState == GhostState.Fleeing && isCloakedWhileFleeing))
+        if (IsGhostCurrentlyInvisible)
         {
             // INVISIBLE / CLOAKED MODE: 0% to naked eye, PURPLE aura only under UV!
             rimColor = uvShimmerRimColor;
@@ -572,6 +674,16 @@ public class GhostAI : MonoBehaviour
                 }
             }
         }
+        else if (currentState == GhostState.Lurking)
+        {
+            // STAGE 1C CORNER-PEEK LURING: Tense Spectral BLUE silhouette leaning out from doorway/wall edge!
+            float breathPulse = (Mathf.Sin(Time.time * 3.1f) * 0.05f) + ((Mathf.PerlinNoise(Time.time * 2.6f, m_NoiseSeed) - 0.5f) * 0.08f);
+            targetVisibility = Mathf.Clamp01(lurkSpectralVisibility + breathPulse);
+            m_IsUsingHeightWipe = false;
+            transitionSpeed = 3.2f;
+            rimColor = exposedVisibleBlueColor;
+            rimIntensity = m_HasMadeLurkEyeContact ? 1.75f : 1.40f;
+        }
         else if (currentState == GhostState.Stalking)
         {
             // VISIBLE STALKING: Semi-ethereal BLUE phantom form (visible without UV)
@@ -602,7 +714,7 @@ public class GhostAI : MonoBehaviour
         }
 
         // Anti-Frustration Beam Burn-Lock: Normal beam burns away cloak ONLY when not stealth-immune!
-        if (hitByNormalBeam && currentState != GhostState.Hidden && !isCloakedWhileFleeing)
+        if (hitByNormalBeam && !isCloakImmuneNow && currentState != GhostState.Hidden)
         {
             targetVisibility = 1.0f;
         }
@@ -1003,7 +1115,9 @@ public class GhostAI : MonoBehaviour
         }
 
         Vector3 currentChestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
-        bool isActivelyMoving = (currentState == GhostState.Fleeing || currentState == GhostState.Stalking);
+        bool isActivelyMoving = currentState == GhostState.Fleeing
+            || currentState == GhostState.Stalking
+            || (currentState == GhostState.Lurking && currentLurkSubState != LurkSubState.PeekingAtPlayer);
         bool isLateTier = IsLateWallPhaseTier;
 
         isPhasingThroughWall = DetectWallOverlap(isActivelyMoving);
@@ -1153,8 +1267,54 @@ public class GhostAI : MonoBehaviour
     }
 
     // =========================================================================
-    // AI STATE UPDATES (HIDDEN, STALKING, WATCHING, FLEEING + STRUGGLE)
+    // AI STATE UPDATES (HIDDEN, LURKING, STALKING, WATCHING, FLEEING)
     // =========================================================================
+    private void ScheduleNextLurkDelay()
+    {
+        float minDelay = Mathf.Max(1.0f, Mathf.Min(lurkStartDelayRange.x, lurkStartDelayRange.y));
+        float maxDelay = Mathf.Max(minDelay + 0.2f, Mathf.Max(lurkStartDelayRange.x, lurkStartDelayRange.y));
+        m_NextLurkTriggerTime = m_HiddenTimer + Random.Range(minDelay, maxDelay);
+    }
+
+    private void FlattenHorizontalRotation()
+    {
+        m_CurrentLeanBlend = 0f;
+        Vector3 flatForward = transform.forward;
+        flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 0.001f)
+            flatForward = m_LastPathForward.sqrMagnitude > 0.001f ? m_LastPathForward : Vector3.forward;
+
+        transform.rotation = Quaternion.LookRotation(flatForward.normalized, Vector3.up);
+    }
+
+    /// <summary>
+    /// Play-Mode testing shortcut: right-click GhostAI and choose this to make the ghost immediately creep to a corner and peek!
+    /// </summary>
+    [ContextMenu("Trigger Lurk Peek Now (Test)")]
+    public void TriggerLurkPeekNow()
+    {
+        if (!Application.isPlaying || currentState == GhostState.Captured)
+            return;
+
+        if (currentState != GhostState.Hidden)
+        {
+            // Snap cleanly to current hiding spot first if tested mid-state
+            if (m_CurrentSpot != null)
+            {
+                transform.position = m_CurrentSpot.Position;
+                m_CorePathPosition = m_CurrentSpot.Position;
+                m_BaseYPosition = m_CurrentSpot.Position.y;
+            }
+            FlattenHorizontalRotation();
+            currentState = GhostState.Hidden;
+        }
+
+        if (!TryStartLurking(forceWideSearch: true))
+        {
+            Debug.LogWarning($"[{gameObject.name}] Could not find an unblocked corner sightline to player right now — move into the hallway and try again!");
+        }
+    }
+
     private void UpdateHidden()
     {
         if (triggerOnFlashlightHit && m_GhostTarget != null && m_GhostTarget.IsIlluminated)
@@ -1195,19 +1355,510 @@ public class GhostAI : MonoBehaviour
             }
         }
 
-        if (enableStalking && playerHead != null)
+        if (playerHead == null)
+            return;
+
+        m_HiddenTimer += Time.deltaTime;
+
+        // Stage 1C: Attempt Corner-Peek Luring before escalating to full Stalking!
+        if (enableLurking && m_LuresPerformedThisHide < maxLuresBeforeStalk && m_HiddenTimer >= m_NextLurkTriggerTime)
         {
-            m_HiddenTimer += Time.deltaTime;
-            if (m_HiddenTimer >= stalkStartDelaySeconds)
+            if (TryStartLurking(forceWideSearch: false))
             {
-                m_HiddenTimer = 0f;
-                StartStalking();
+                return;
+            }
+
+            // No clean corner sightline yet — re-check shortly while hidden timer continues toward Stalking
+            m_NextLurkTriggerTime = m_HiddenTimer + 2.5f;
+        }
+
+        if (enableStalking && m_HiddenTimer >= stalkStartDelaySeconds)
+        {
+            m_HiddenTimer = 0f;
+            StartStalking();
+        }
+    }
+
+    private bool TryStartLurking(bool forceWideSearch)
+    {
+        if (playerHead == null)
+            return false;
+
+        Vector3 originPos = m_CurrentSpot != null ? m_CurrentSpot.Position : transform.position;
+        float distToPlayer = Vector3.Distance(originPos, playerHead.position);
+        if (!forceWideSearch && distToPlayer <= triggerProximityDistance + 0.6f)
+            return false;
+
+        float searchRadius = forceWideSearch ? Mathf.Max(lurkSearchRadius, 18.0f) : lurkSearchRadius;
+        if (!TryFindLurkPeekPosition(originPos, searchRadius, out Vector3 peekPos, out Vector3 leanOpenDir))
+            return false;
+
+        m_LurkOriginPosition = originPos;
+        m_LurkPeekPosition = peekPos;
+        m_LurkCorePosition = transform.position;
+        m_LurkLeanOpenDirection = leanOpenDir;
+        m_CurrentLeanBlend = 0f;
+        m_LurkHoldTimer = 0f;
+        m_LurkEyeContactTimer = 0f;
+        m_HasMadeLurkEyeContact = false;
+        m_HasDroppedLurkCornerTrace = false;
+        m_NoiseSeed = Random.Range(0f, 100f);
+        m_LastTraceDropPosition = transform.position;
+        m_LuresPerformedThisHide++;
+
+        currentState = GhostState.Lurking;
+        currentLurkSubState = LurkSubState.CreepingToCorner;
+
+        Debug.Log($"[{gameObject.name}] Entering LURKING (Peek #{m_LuresPerformedThisHide}/{maxLuresBeforeStalk}) -> Creeping to corner {m_LurkPeekPosition} to bait player!");
+        return true;
+    }
+
+    private void UpdateLurking()
+    {
+        if (playerHead == null)
+        {
+            FinishLurkToHidden();
+            return;
+        }
+
+        bool isVulnerableAtCorner = !IsLurkPhaseCloaked();
+
+        // 1. Fast-draw Normal Flashlight counterplay: catch her mid-peek before she ducks behind the wall!
+        if (isVulnerableAtCorner && triggerOnFlashlightHit && m_GhostTarget != null && m_GhostTarget.IsIlluminated)
+        {
+            FlattenHorizontalRotation();
+            currentLurkSubState = LurkSubState.None;
+            TriggerFakeEscape("Normal Flashlight caught the ghost peeking around a corner!");
+            return;
+        }
+
+        // 2. Close-range rush counterplay
+        float distToPlayer = Vector3.Distance(m_LurkCorePosition, playerHead.position);
+        if (distToPlayer <= triggerProximityDistance && (!requireLineOfSightForProximity || HasLineOfSightToPlayer()))
+        {
+            FlattenHorizontalRotation();
+            currentLurkSubState = LurkSubState.None;
+            TriggerFakeEscape("Player rushed the lurking ghost at close range!");
+            return;
+        }
+
+        float targetLean = 0f;
+
+        if (currentLurkSubState == LurkSubState.CreepingToCorner)
+        {
+            float stepSpeed = lurkMoveSpeed * GetActiveWallSpeedMultiplier();
+            m_LurkCorePosition = Vector3.MoveTowards(m_LurkCorePosition, m_LurkPeekPosition, stepSpeed * Time.deltaTime);
+
+            Vector3 toCorner = m_LurkPeekPosition - m_LurkCorePosition;
+            Vector3 flatToCorner = new Vector3(toCorner.x, 0f, toCorner.z);
+            float distRemaining = flatToCorner.magnitude;
+
+            if (flatToCorner.sqrMagnitude > 0.0004f)
+            {
+                m_LastPathForward = flatToCorner / distRemaining;
+            }
+
+            UpdateTraceTrail(m_LastPathForward);
+
+            // Start leaning out smoothly over the final 0.85m as she reaches the doorframe!
+            if (distRemaining < 0.85f)
+            {
+                targetLean = 1.0f - (distRemaining / 0.85f);
+            }
+
+            if (distRemaining <= 0.06f)
+            {
+                m_LurkCorePosition = m_LurkPeekPosition;
+                currentLurkSubState = LurkSubState.PeekingAtPlayer;
+                m_LurkHoldTimer = 0f;
+                m_LurkEyeContactTimer = 0f;
+
+                if (!m_HasDroppedLurkCornerTrace)
+                {
+                    m_HasDroppedLurkCornerTrace = true;
+                    SpawnLurkCornerTrace(m_LurkPeekPosition);
+                }
+
+                Debug.Log($"[{gameObject.name}] Leaning {lurkPeekLeanAngle:F0} deg around corner in BLUE — watching player from peripheral vision!");
             }
         }
+        else if (currentLurkSubState == LurkSubState.PeekingAtPlayer)
+        {
+            targetLean = 1.0f;
+            m_LurkHoldTimer += Time.deltaTime;
+
+            // Refresh open lean direction gently in case the player walked sideways across the room
+            m_LurkLeanOpenDirection = Vector3.Slerp(
+                m_LurkLeanOpenDirection,
+                ComputeCornerLeanDirection(m_LurkPeekPosition, m_LurkOriginPosition),
+                3.0f * Time.deltaTime
+            ).normalized;
+
+            bool playerLookingAtPeek = IsPlayerGazingWithinAngle(lurkEyeContactAngle) && HasLineOfSightToPlayer();
+            bool uvSpookedAtCorner = disturbWithUVBeam && m_GhostTarget != null && m_GhostTarget.IsUVIlluminated;
+
+            if (playerLookingAtPeek)
+            {
+                if (!m_HasMadeLurkEyeContact)
+                {
+                    m_HasMadeLurkEyeContact = true;
+                    Debug.Log($"[{gameObject.name}] *** EYE CONTACT! *** Player looked right at the peeking ghost — freezing briefly before ducking behind cover!");
+                }
+
+                m_LurkEyeContactTimer += Time.deltaTime;
+                float roundScaledFreeze = Mathf.Max(0.24f, lurkEyeContactHoldSeconds - Mathf.Max(0, activeRoundNumber - 1) * 0.045f);
+                if (m_LurkEyeContactTimer >= roundScaledFreeze)
+                {
+                    BeginLurkDuckBack();
+                }
+            }
+            else if (uvSpookedAtCorner && m_LurkHoldTimer >= 0.9f)
+            {
+                BeginLurkDuckBack();
+            }
+            else if (m_LurkHoldTimer >= lurkMaxPeekDuration)
+            {
+                BeginLurkDuckBack();
+            }
+        }
+        else if (currentLurkSubState == LurkSubState.DuckingBack)
+        {
+            targetLean = 0f;
+            float retreatStep = lurkRetreatSpeed * GetActiveWallSpeedMultiplier();
+            m_LurkCorePosition = Vector3.MoveTowards(m_LurkCorePosition, m_LurkOriginPosition, retreatStep * Time.deltaTime);
+
+            Vector3 toOrigin = m_LurkOriginPosition - m_LurkCorePosition;
+            Vector3 flatToOrigin = new Vector3(toOrigin.x, 0f, toOrigin.z);
+            float distToOrigin = flatToOrigin.magnitude;
+
+            if (flatToOrigin.sqrMagnitude > 0.0004f)
+            {
+                m_LastPathForward = flatToOrigin / distToOrigin;
+            }
+
+            UpdateTraceTrail(m_LastPathForward);
+
+            // Stage 1C Mind-Game (Rounds 4-6): Once safely behind the wall out of sight, 35% chance to cloak & sneak away leaving PURPLE UV footprints!
+            float distFromCorner = Vector2.Distance(
+                new Vector2(m_LurkCorePosition.x, m_LurkCorePosition.z),
+                new Vector2(m_LurkPeekPosition.x, m_LurkPeekPosition.z)
+            );
+
+            if (enableLateRoundFeintRelocate &&
+                IsLateWallPhaseTier &&
+                hidingSpots.Count > 1 &&
+                distFromCorner > 0.70f &&
+                !HasLineOfSightToPlayer())
+            {
+                // Roll once per duck-back by gating on m_HasMadeLurkEyeContact or clearing substate
+                if (m_HasMadeLurkEyeContact)
+                {
+                    m_HasMadeLurkEyeContact = false;
+                    if (Random.value < lateRoundFeintChance)
+                    {
+                        FlattenHorizontalRotation();
+                        currentLurkSubState = LurkSubState.None;
+                        transform.position = m_LurkCorePosition;
+                        m_ForceNextEscapeCloaked = true;
+                        Debug.Log($"[{gameObject.name}] *** LATE-ROUND STEALTH FEINT! *** Ducked behind cover and sneaking to a new spot INVISIBLY (PURPLE UV footprints)!");
+                        StartFleeing(allowCloakedEscape: true);
+                        return;
+                    }
+                }
+            }
+
+            if (distToOrigin <= 0.08f)
+            {
+                FinishLurkToHidden();
+                return;
+            }
+        }
+
+        // Smoothly interpolate corner-lean angle & apply lower-body-anchored lean offset!
+        m_CurrentLeanBlend = Mathf.MoveTowards(m_CurrentLeanBlend, targetLean, 3.8f * Time.deltaTime);
+        float leanRadians = m_CurrentLeanBlend * lurkPeekLeanAngle * Mathf.Deg2Rad;
+
+        Vector3 desiredFacing = m_LastPathForward;
+        if (currentLurkSubState == LurkSubState.PeekingAtPlayer || targetLean > 0.05f)
+        {
+            Vector3 toPlayerFlat = playerHead.position - m_LurkCorePosition;
+            toPlayerFlat.y = 0f;
+            if (toPlayerFlat.sqrMagnitude > 0.001f)
+            {
+                desiredFacing = toPlayerFlat.normalized;
+            }
+        }
+
+        if (desiredFacing.sqrMagnitude > 0.001f)
+        {
+            Vector3 desiredUp = leanRadians > 0.001f
+                ? Vector3.RotateTowards(Vector3.up, m_LurkLeanOpenDirection, leanRadians, 0f)
+                : Vector3.up;
+            Quaternion targetRot = Quaternion.LookRotation(desiredFacing, desiredUp);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSpeed * Time.deltaTime);
+        }
+
+        Vector3 leanTorsoShift = m_LurkLeanOpenDirection * (Mathf.Sin(leanRadians) * 0.42f);
+        float hoverY = m_LurkCorePosition.y + (CalculateHoverAndShimmerOffset() * 0.65f);
+        transform.position = new Vector3(
+            m_LurkCorePosition.x + leanTorsoShift.x,
+            hoverY,
+            m_LurkCorePosition.z + leanTorsoShift.z
+        );
+    }
+
+    private void BeginLurkDuckBack()
+    {
+        if (currentLurkSubState == LurkSubState.DuckingBack)
+            return;
+
+        currentLurkSubState = LurkSubState.DuckingBack;
+        Debug.Log($"[{gameObject.name}] Ducking back behind corner into ambush (waiting inside 4m Danger Meter trap)!");
+    }
+
+    private void FinishLurkToHidden()
+    {
+        FlattenHorizontalRotation();
+        currentLurkSubState = LurkSubState.None;
+        Vector3 restPos = m_CurrentSpot != null ? m_CurrentSpot.Position : m_LurkOriginPosition;
+        m_CorePathPosition = restPos;
+        transform.position = restPos;
+        m_BaseYPosition = restPos.y;
+        m_UVExposureTimer = 0f;
+        currentState = GhostState.Hidden;
+        ScheduleNextLurkDelay();
+        Debug.Log($"[{gameObject.name}] Ghost tucked back into '{(m_CurrentSpot != null ? m_CurrentSpot.SpotName : "cover")}' — waiting in ambush!");
+    }
+
+    private void SpawnLurkCornerTrace(Vector3 cornerPos)
+    {
+        if (!leaveUVTraceTrail || m_TracePool.Count == 0)
+            return;
+
+        float floorY = FindFloorHeightAt(cornerPos);
+        Vector3 ringPos = new Vector3(cornerPos.x, floorY + 0.018f, cornerPos.z);
+
+        GhostTrace trace = GetNextPooledTrace();
+        if (trace != null)
+        {
+            trace.ActivateTrace(
+                ringPos,
+                Quaternion.Euler(90f, 0f, 0f),
+                Vector3.up,
+                new Vector3(0.42f, 0.42f, 1.0f),
+                traceLifetimeSeconds,
+                GhostTrace.TraceVisualType.ResidualRing,
+                visibleStateTraceUVColor
+            );
+        }
+    }
+
+    private bool TryFindLurkPeekPosition(Vector3 spotOrigin, float maxSearchRadius, out Vector3 bestPeekPos, out Vector3 bestLeanOpenDir)
+    {
+        bestPeekPos = spotOrigin;
+        bestLeanOpenDir = Vector3.right;
+
+        if (playerHead == null)
+            return false;
+
+        Vector3 playerPos = playerHead.position;
+        float minSafePlayerDist = triggerProximityDistance + 0.45f;
+
+        // 1. Optional designer-placed CustomPeekPoint on GhostHidingSpot
+        if (m_CurrentSpot != null && m_CurrentSpot.CustomPeekPoint != null)
+        {
+            Vector3 customRaw = m_CurrentSpot.CustomPeekPoint.position;
+            Vector3 customCandidate = new Vector3(customRaw.x, spotOrigin.y, customRaw.z);
+            if (Vector3.Distance(customCandidate, playerPos) > minSafePlayerDist)
+            {
+                bestPeekPos = customCandidate;
+                bestLeanOpenDir = ComputeCornerLeanDirection(bestPeekPos, spotOrigin);
+                return true;
+            }
+        }
+
+        // 2. Procedural 16-angle x 6-ring zero-GC doorway & wall-corner solver
+        float bestScore = float.MinValue;
+        bool foundValid = false;
+
+        float spotFloorY = FindFloorHeightAt(spotOrigin);
+        Vector3 spotChest = new Vector3(spotOrigin.x, spotFloorY + 1.15f, spotOrigin.z);
+
+        const int angleSteps = 16;
+        float angleStepDeg = 360f / angleSteps;
+
+        for (int r = 0; r < s_LurkSearchRingFractions.Length; r++)
+        {
+            float radius = Mathf.Max(1.15f, maxSearchRadius * s_LurkSearchRingFractions[r]);
+            if (radius > maxSearchRadius + 0.01f)
+                continue;
+
+            for (int a = 0; a < angleSteps; a++)
+            {
+                float rad = (a * angleStepDeg) * Mathf.Deg2Rad;
+                Vector3 candidate = new Vector3(
+                    spotOrigin.x + Mathf.Cos(rad) * radius,
+                    spotOrigin.y,
+                    spotOrigin.z + Mathf.Sin(rad) * radius
+                );
+
+                float distToPlayer = Vector3.Distance(candidate, playerPos);
+                if (distToPlayer <= minSafePlayerDist)
+                    continue;
+
+                float candFloorY = FindFloorHeightAt(candidate);
+                Vector3 candChest = new Vector3(candidate.x, candFloorY + 1.15f, candidate.z);
+                Vector3 candEye = new Vector3(candidate.x, candFloorY + 1.45f, candidate.z);
+
+                // Must not stand embedded inside a solid wall
+                if (IsPointInsideWall(candChest, 0.34f))
+                    continue;
+
+                // Must have a genuine clear sightline to the player's headset!
+                if (!HasLineOfSightFromPlayerToPoint(candEye))
+                    continue;
+
+                float score = 0f;
+
+                // Strongly prefer the closest doorway/corner to her hiding spot for a fast retreat
+                score -= radius * 4.2f;
+
+                // Prefer natural open interior paths to the doorway over cutting through walls
+                if (!IsSegmentBlockedByWall(spotChest, candChest))
+                {
+                    score += 38f;
+                }
+
+                // True Wall-Edge / Doorframe Bonus: reward standing right next to a wall edge (0.35m - 0.90m)!
+                if (IsPointInsideWall(candChest, 0.90f))
+                {
+                    score += 32f;
+                }
+
+                // Peripheral Vision Bonus: scariest when creeping out near the edge of the player's view (16 - 88 deg)
+                Vector3 playerToCand = candEye - playerPos;
+                float gazeAngle = Vector3.Angle(playerHead.forward, playerToCand.normalized);
+                if (gazeAngle >= 16f && gazeAngle <= 88f)
+                {
+                    score += 22f;
+                }
+                else if (gazeAngle < 16f)
+                {
+                    score += 6f;
+                }
+
+                score += Random.Range(0f, 4f);
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestPeekPos = candidate;
+                    foundValid = true;
+                }
+            }
+        }
+
+        if (foundValid)
+        {
+            bestLeanOpenDir = ComputeCornerLeanDirection(bestPeekPos, spotOrigin);
+            return true;
+        }
+
+        return false;
+    }
+
+    private Vector3 ComputeCornerLeanDirection(Vector3 peekPos, Vector3 coverOrigin)
+    {
+        Vector3 toPlayerFlat = playerHead != null ? (playerHead.position - peekPos) : transform.forward;
+        toPlayerFlat.y = 0f;
+        if (toPlayerFlat.sqrMagnitude < 0.001f)
+            toPlayerFlat = Vector3.forward;
+        else
+            toPlayerFlat.Normalize();
+
+        Vector3 rightAxis = Vector3.Cross(Vector3.up, toPlayerFlat).normalized;
+        float floorY = FindFloorHeightAt(peekPos);
+        Vector3 chestOrigin = new Vector3(peekPos.x, floorY + 1.2f, peekPos.z);
+
+        bool wallOnRight = TryGetClosestWallAlongRay(chestOrigin, rightAxis, 1.25f, out float rightDist);
+        bool wallOnLeft = TryGetClosestWallAlongRay(chestOrigin, -rightAxis, 1.25f, out float leftDist);
+
+        // Lean AWAY from whichever side has the solid doorframe/wall!
+        if (wallOnRight && (!wallOnLeft || rightDist <= leftDist))
+            return -rightAxis;
+
+        if (wallOnLeft && (!wallOnRight || leftDist < rightDist))
+            return rightAxis;
+
+        // Fallback: lean outward away from the hiding spot cover direction
+        Vector3 coverToPeek = peekPos - coverOrigin;
+        coverToPeek.y = 0f;
+        float sideDot = Vector3.Dot(coverToPeek, rightAxis);
+        return sideDot >= 0f ? rightAxis : -rightAxis;
+    }
+
+    private bool TryGetClosestWallAlongRay(Vector3 origin, Vector3 dir, float maxDist, out float closestDist)
+    {
+        closestDist = float.MaxValue;
+        int count = Physics.RaycastNonAlloc(origin, dir, m_WallRayHits, maxDist, obstacleLayers, QueryTriggerInteraction.Ignore);
+        bool found = false;
+
+        for (int i = 0; i < count; i++)
+        {
+            Collider col = m_WallRayHits[i].collider;
+            if (col == null || col.transform.IsChildOf(transform))
+                continue;
+            if (playerHead != null && col.transform.IsChildOf(playerHead.root))
+                continue;
+            if (col.GetComponentInParent<GhostTarget>() != null)
+                continue;
+            if (Mathf.Abs(m_WallRayHits[i].normal.y) >= 0.45f)
+                continue;
+
+            if (m_WallRayHits[i].distance < closestDist)
+            {
+                closestDist = m_WallRayHits[i].distance;
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
+    private bool IsPointInsideWall(Vector3 chestPoint, float checkRadius)
+    {
+        int count = Physics.OverlapSphereNonAlloc(chestPoint, checkRadius, m_WallOverlapBuffer, obstacleLayers, QueryTriggerInteraction.Ignore);
+        return HasValidWallCollider(count, chestPoint.y);
+    }
+
+    private bool IsSegmentBlockedByWall(Vector3 fromChest, Vector3 toChest)
+    {
+        Vector3 delta = toChest - fromChest;
+        float dist = delta.magnitude;
+        if (dist <= 0.05f)
+            return false;
+
+        return TryGetClosestWallAlongRay(fromChest, delta / dist, dist, out _);
+    }
+
+    private bool IsPlayerGazingWithinAngle(float maxAngleDegrees)
+    {
+        if (playerHead == null)
+            return false;
+
+        Vector3 targetCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
+        Vector3 toGhost = targetCenter - playerHead.position;
+        float distance = toGhost.magnitude;
+        if (distance < 0.01f)
+            return true;
+
+        return Vector3.Angle(playerHead.forward, toGhost / distance) <= maxAngleDegrees;
     }
 
     private void StartStalking()
     {
+        FlattenHorizontalRotation();
+        currentLurkSubState = LurkSubState.None;
         currentState = GhostState.Stalking;
         isCloakedWhileFleeing = false;
         if (m_GhostTarget != null)
@@ -1505,12 +2156,15 @@ public class GhostAI : MonoBehaviour
             m_LateralOffsetVelocity = 0f;
             m_HiddenTimer = 0f;
             m_UVExposureTimer = 0f;
+            m_LuresPerformedThisHide = 0;
+            currentLurkSubState = LurkSubState.None;
             isCloakedWhileFleeing = false;
             if (m_GhostTarget != null)
             {
                 m_GhostTarget.SetCloakCaptureImmunity(false);
             }
             currentState = GhostState.Hidden;
+            ScheduleNextLurkDelay();
             Debug.Log($"[{gameObject.name}] Ghost safely reached hiding spot '{m_CurrentSpot.SpotName}' — dematerializing into cloak.");
         }
     }
@@ -1622,15 +2276,18 @@ public class GhostAI : MonoBehaviour
     [ContextMenu("Trigger Fake Escape")]
     public void TriggerFakeEscape(string reason = "Triggered")
     {
-        if (currentState != GhostState.Hidden && currentState != GhostState.Stalking)
+        if (currentState != GhostState.Hidden && currentState != GhostState.Lurking && currentState != GhostState.Stalking)
             return;
 
+        FlattenHorizontalRotation();
+        currentLurkSubState = LurkSubState.None;
         m_HiddenTimer = 0f;
         m_StalkTimer = 0f;
         m_UVExposureTimer = 0f;
         m_HintShimmerTimer = 0f;
-        m_BaseYPosition = transform.position.y;
-        m_CorePathPosition = transform.position;
+        m_LuresPerformedThisHide = 0;
+        m_BaseYPosition = m_CurrentSpot != null ? m_CurrentSpot.Position.y : transform.position.y;
+        m_CorePathPosition = new Vector3(transform.position.x, m_BaseYPosition, transform.position.z);
 
         bool chooseWatch = !m_ForceNextEscapeCloaked && (Random.value <= watchPlayerChance);
 
@@ -1687,10 +2344,14 @@ public class GhostAI : MonoBehaviour
         if (newWeaveFrequency >= 0f)
             weaveFrequency = newWeaveFrequency;
 
+        FlattenHorizontalRotation();
+        currentLurkSubState = LurkSubState.None;
         m_HiddenTimer = 0f;
         m_StalkTimer = 0f;
         m_UVExposureTimer = 0f;
         m_HintShimmerTimer = 0f;
+        m_LuresPerformedThisHide = 0;
+        m_HasMadeLurkEyeContact = false;
         m_CurrentLateralOffset = 0f;
         m_LateralOffsetVelocity = 0f;
         m_FleeElapsedSeconds = 0f;
@@ -1715,6 +2376,7 @@ public class GhostAI : MonoBehaviour
         }
 
         currentState = GhostState.Hidden;
+        ScheduleNextLurkDelay();
         currentSpectralVisibility = cloakWhileHidden ? 0.0f : 1.0f;
 
         if (m_GhostTarget != null)
@@ -1871,6 +2533,8 @@ public class GhostAI : MonoBehaviour
         if (m_GhostTarget != null && m_GhostTarget.IsTestDummy)
             return;
 
+        FlattenHorizontalRotation();
+        currentLurkSubState = LurkSubState.None;
         isCloakedWhileFleeing = false;
         if (m_GhostTarget != null)
         {
@@ -1890,7 +2554,15 @@ public class GhostAI : MonoBehaviour
             Gizmos.DrawWireSphere(transform.position, 0.55f);
         }
 
-        if (currentState == GhostState.Fleeing && m_TargetSpot != null)
+        if (currentState == GhostState.Lurking)
+        {
+            Gizmos.color = new Color(1f, 0.85f, 0.2f, 0.9f);
+            Gizmos.DrawLine(m_LurkOriginPosition, m_LurkPeekPosition);
+            Gizmos.color = new Color(0.16f, 0.72f, 1f, 1f);
+            Gizmos.DrawWireSphere(m_LurkPeekPosition, 0.28f);
+            Gizmos.DrawLine(m_LurkPeekPosition, m_LurkPeekPosition + m_LurkLeanOpenDirection * 0.65f);
+        }
+        else if (currentState == GhostState.Fleeing && m_TargetSpot != null)
         {
             Gizmos.color = Color.cyan;
             Gizmos.DrawLine(m_CorePathPosition, m_TargetSpot.Position);

@@ -174,6 +174,7 @@ public class RoundManager : MonoBehaviour
         bool playerSpottedGhost =
             ghostAI.CurrentState == GhostAI.GhostState.WatchingPlayer ||
             ghostAI.CurrentState == GhostAI.GhostState.Fleeing ||
+            ghostAI.IsPlayerSpottingLurkPeek ||
             (ghostTarget != null && (ghostTarget.IsIlluminated || ghostTarget.IsUVIlluminated));
 
         if (playerSpottedGhost)
