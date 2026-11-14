@@ -12,13 +12,14 @@ public class GhostTrace : MonoBehaviour
         WallSplash = 1,
         ResidualRing = 2,
         GhostOutline = 3,
+        Handprint = 4,
         WallPhaseRift = WallSplash
     }
 
     public static readonly List<GhostTrace> ActiveTraces = new List<GhostTrace>();
 
     [Header("UV Reveal Settings")]
-    [Tooltip("Shape rendered on this UV trace (Footprint, WallSplash, ResidualRing, or GhostOutline).")]
+    [Tooltip("Shape rendered on this UV trace (Footprint, WallSplash, ResidualRing, GhostOutline, or Handprint).")]
     [SerializeField] private TraceVisualType traceType = TraceVisualType.Footprint;
 
     [Tooltip("Fluorescent color when revealed by the UV flashlight.")]
@@ -40,6 +41,9 @@ public class GhostTrace : MonoBehaviour
     [Header("Lifetime Settings")]
     [Tooltip("If true, this trace never expires (useful for handprints/clues placed manually in rooms).")]
     [SerializeField] private bool isPermanentTrace = false;
+
+    [Tooltip("Optional variation seed for permanent scene-placed traces (for Handprint: >= 0 = Right Hand, < 0 = Left Hand).")]
+    [SerializeField] private float permanentTraceSeed = 1.0f;
 
     [Tooltip("Seconds before a dropped trace expires and hides itself.")]
     [SerializeField] private float traceLifetimeSeconds = 25.0f;
@@ -78,7 +82,10 @@ public class GhostTrace : MonoBehaviour
     public Collider SurfaceCollider => m_SurfaceCollider;
     public TraceVisualType CurrentTraceType => traceType;
     public float CurrentRevealAmount => currentRevealAmount;
-    public bool IsWallMark => traceType == TraceVisualType.WallSplash || traceType == TraceVisualType.GhostOutline;
+    public bool IsWallMark =>
+        traceType == TraceVisualType.WallSplash ||
+        traceType == TraceVisualType.GhostOutline ||
+        traceType == TraceVisualType.Handprint;
 
     public void SetTraceMaterial(Material mat)
     {
@@ -105,6 +112,15 @@ public class GhostTrace : MonoBehaviour
         m_PropBlock = new MaterialPropertyBlock();
         m_Renderer = GetComponentInChildren<Renderer>(true);
         m_QuadAspect = transform.localScale.x > 0.01f ? (transform.localScale.y / transform.localScale.x) : 1.0f;
+        if (isPermanentTrace)
+        {
+            m_TraceSeed = permanentTraceSeed;
+            if (IsWallMark)
+            {
+                Vector3 quadFrontNormal = -transform.forward;
+                m_SurfaceNormal = quadFrontNormal.sqrMagnitude > 0.001f ? quadFrontNormal.normalized : Vector3.back;
+            }
+        }
         EnsureUVMaterialAssigned();
         ApplyVisuals(0f);
     }

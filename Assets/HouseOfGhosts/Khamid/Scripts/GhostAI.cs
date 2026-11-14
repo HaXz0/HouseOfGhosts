@@ -31,12 +31,20 @@ public class GhostAI : MonoBehaviour
         ForceLateOutlineAndSpeed = 2
     }
 
+    public enum CornerCutTierOverride
+    {
+        UseCurrentRound = 0,
+        ForceDisabled = 1,
+        AlwaysEnableForTesting = 2
+    }
+
     [Header("Current State (Read Only)")]
     [SerializeField] private GhostState currentState = GhostState.Hidden;
     [SerializeField] private LurkSubState currentLurkSubState = LurkSubState.None;
     [SerializeField] private int activeRoundNumber = 1;
     [SerializeField] private bool isPhasingThroughWall = false;
     [SerializeField] private bool isCloakedWhileFleeing = false;
+    [SerializeField] private bool isPerformingCornerCut = false;
     [SerializeField] private float currentSpectralVisibility = 0f;
 
     [Header("Stage 1: Cloak & Supernatural Materialization")]
@@ -128,6 +136,43 @@ public class GhostAI : MonoBehaviour
     [Tooltip("Probability (0.35 = 35%) in Late Rounds (4-6) to perform an Invisible Feint Relocation after ducking behind the wall.")]
     [Range(0f, 1f)]
     [SerializeField] private float lateRoundFeintChance = 0.35f;
+
+    [Header("Stage 1D: Tactical Line-of-Sight Corner Cuts (Rounds 4-6)")]
+    [Tooltip("If true, once the fleeing ghost breaks your line-of-sight behind a wall in Late Rounds, she cuts sharply sideways instead of continuing in a predictable straight line!")]
+    [SerializeField] private bool enableCornerCuts = true;
+
+    [Tooltip("Round where behind-wall 90-degree corner cuts and open-floor diagonal feints unlock (default 4 = Rounds 4-6).")]
+    [Range(1, 6)]
+    [SerializeField] private int cornerCutStartRound = 4;
+
+    [Tooltip("Testing shortcut! Leave on UseCurrentRound for normal gameplay, or select AlwaysEnableForTesting to test corner cuts in Round 1.")]
+    [SerializeField] private CornerCutTierOverride cornerCutTestOverride = CornerCutTierOverride.UseCurrentRound;
+
+    [Tooltip("Probability (0.85 = 85%) to execute a sharp sideways corner cut right after breaking line-of-sight behind a wall.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float cornerCutChance = 0.85f;
+
+    [Tooltip("How far sideways (meters) she cuts parallel behind cover before curving toward her hiding spot.")]
+    [Range(1.4f, 5.0f)]
+    [SerializeField] private float cornerCutLateralDistance = 2.8f;
+
+    [Tooltip("Quick supernatural agility speed boost multiplier during the sideways corner cut.")]
+    [Range(1.0f, 1.8f)]
+    [SerializeField] private float cornerCutSpeedMultiplier = 1.25f;
+
+    [Tooltip("Seconds that the corner-cut agility burst lasts.")]
+    [Range(0.25f, 2.0f)]
+    [SerializeField] private float cornerCutBurstDuration = 0.90f;
+
+    [Tooltip("If true, breaking line-of-sight can also redirect her final destination to a different sideways hiding spot out of your view!")]
+    [SerializeField] private bool enableMidChaseSpotRedirect = true;
+
+    [Tooltip("If true, when chased in open view without cover in Late Rounds (while capture progress < 50%), she can execute one diagonal break-step away from your aim.")]
+    [SerializeField] private bool enableOpenFloorFeintCut = true;
+
+    [Tooltip("Probability (0.65 = 65%) to perform an open-floor diagonal feint when chased without cover in Late Rounds.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float openFloorFeintChance = 0.65f;
 
     [Header("Stage 2: Flashlight Beam-Lock Struggle")]
     [Tooltip("If true, holding the Normal beam on the ghost makes her visibly tremble and drags down her flee speed as capture nears 3s.")]
@@ -285,6 +330,24 @@ public class GhostAI : MonoBehaviour
     [Tooltip("Leave empty right now to render a crisp Capsule Outline! When the 3D Ghost Girl model is finished, drag her 2D silhouette texture (alpha PNG) here to upgrade the wall outline automatically.")]
     [SerializeField] private Texture2D customGhostSilhouetteTexture;
 
+    [Header("Stage 3C: UV Wall Handprints (Lurk Corners & Wall Brushes)")]
+    [Tooltip("If true, the ghost leaves creepy child-sized 5-finger UV handprints on wall corners when peeking/lurking and when brushing closely past walls.")]
+    [SerializeField] private bool leaveUVHandprints = true;
+
+    [Tooltip("Width and height (meters) of the child-sized 5-finger UV handprint (~0.18m x 0.22m).")]
+    [SerializeField] private Vector2 handprintSize = new Vector2(0.18f, 0.22f);
+
+    [Tooltip("Height above the floor (meters) where the young ghost girl braces her palm (~1.12m child shoulder/chest height).")]
+    [Range(0.75f, 1.55f)]
+    [SerializeField] private float handprintHeightOffset = 1.12f;
+
+    [Tooltip("If true, she also leaves an occasional trailing UV handprint when brushing closely past a corridor wall during Stalking or a Behind-Wall Corner Cut.")]
+    [SerializeField] private bool enableWallBrushHandprints = true;
+
+    [Tooltip("Minimum seconds between wall-brush handprints so walls stay atmospheric rather than cluttered.")]
+    [Range(1.5f, 12.0f)]
+    [SerializeField] private float wallBrushHandprintCooldown = 4.5f;
+
     [Header("Stalking / Creeping Behaviour")]
     [Tooltip("If true, when the player takes too long to find the ghost, she creeps toward the player to drain the Danger Meter.")]
     [SerializeField] private bool enableStalking = true;
@@ -387,6 +450,25 @@ public class GhostAI : MonoBehaviour
 
     private bool m_ForceNextEscapeCloaked = false;
 
+    // Stage 1D: Tactical Line-of-Sight Corner Cuts & Open-Floor Feints state
+    private bool m_ForceNextEscapeCornerCut = false;
+    private bool m_ArmedCornerCutForThisChase = false;
+    private bool m_HasExecutedCoverCornerCut = false;
+    private bool m_HasExecutedOpenFeint = false;
+    private bool m_HadLineOfSightDuringFlee = false;
+    private bool m_ExitedWallDuringFlee = false;
+    private bool m_WasPhasingLastFrameForCut = false;
+    private float m_CoverHiddenFleeTimer = 0f;
+    private float m_OpenSightFleeTimer = 0f;
+    private Vector3 m_ActiveCutWaypoint;
+    private float m_ActiveCutLegTimer = 0f;
+    private float m_CornerCutBurstTimer = 0f;
+    private float m_CornerCutBurstTotalDuration = 0.90f;
+    private float m_ActiveCutSpeedMultiplier = 1.25f;
+
+    private static readonly float[] s_CoverCutCandidateAngles = { 84f, -84f, 64f, -64f };
+    private static readonly float[] s_CoverCutScaleSteps = { 1.0f, 0.68f };
+
     // Stage 1C: Ghost Lurking & Corner-Peek Luring state
     private Vector3 m_LurkOriginPosition;
     private Vector3 m_LurkPeekPosition;
@@ -400,12 +482,17 @@ public class GhostAI : MonoBehaviour
     private bool m_HasDroppedLurkCornerTrace = false;
     private int m_LuresPerformedThisHide = 0;
 
+    // Stage 3C: UV Wall Handprints state
+    private float m_LastWallBrushHandprintTime = -10f;
+    private float m_NextWallBrushCheckTime = 0f;
+
     private static readonly float[] s_LurkSearchRingFractions = { 0.16f, 0.28f, 0.42f, 0.58f, 0.78f, 1.0f };
 
     public GhostState CurrentState => currentState;
     public LurkSubState CurrentLurkSubState => currentLurkSubState;
     public bool IsPhasingThroughWall => isPhasingThroughWall;
     public bool IsCloakedWhileFleeing => isCloakedWhileFleeing;
+    public bool IsPerformingCornerCut => isPerformingCornerCut;
     public float CurrentSpectralVisibility => currentSpectralVisibility;
 
     /// <summary>
@@ -461,6 +548,26 @@ public class GhostAI : MonoBehaviour
                 activeRoundNumber = RoundManager.Instance.CurrentRound;
             }
             return activeRoundNumber >= lateWallPhaseStartRound;
+        }
+    }
+
+    /// <summary>
+    /// True when Stage 1D Tactical Corner Cuts are unlocked for the active round (default Rounds 4-6) or forced on for testing.
+    /// </summary>
+    public bool IsCornerCutTierActive
+    {
+        get
+        {
+            if (!enableCornerCuts || cornerCutTestOverride == CornerCutTierOverride.ForceDisabled)
+                return false;
+            if (cornerCutTestOverride == CornerCutTierOverride.AlwaysEnableForTesting)
+                return true;
+
+            if (RoundManager.Instance != null)
+            {
+                activeRoundNumber = RoundManager.Instance.CurrentRound;
+            }
+            return activeRoundNumber >= cornerCutStartRound;
         }
     }
 
@@ -1426,6 +1533,11 @@ public class GhostAI : MonoBehaviour
         // 1. Fast-draw Normal Flashlight counterplay: catch her mid-peek before she ducks behind the wall!
         if (isVulnerableAtCorner && triggerOnFlashlightHit && m_GhostTarget != null && m_GhostTarget.IsIlluminated)
         {
+            if (!m_HasDroppedLurkCornerTrace)
+            {
+                m_HasDroppedLurkCornerTrace = true;
+                SpawnLurkCornerTrace(m_LurkPeekPosition, m_LurkLeanOpenDirection, wasExposedToPlayer: true);
+            }
             FlattenHorizontalRotation();
             currentLurkSubState = LurkSubState.None;
             TriggerFakeEscape("Normal Flashlight caught the ghost peeking around a corner!");
@@ -1436,6 +1548,11 @@ public class GhostAI : MonoBehaviour
         float distToPlayer = Vector3.Distance(m_LurkCorePosition, playerHead.position);
         if (distToPlayer <= triggerProximityDistance && (!requireLineOfSightForProximity || HasLineOfSightToPlayer()))
         {
+            if (isVulnerableAtCorner && !m_HasDroppedLurkCornerTrace)
+            {
+                m_HasDroppedLurkCornerTrace = true;
+                SpawnLurkCornerTrace(m_LurkPeekPosition, m_LurkLeanOpenDirection, wasExposedToPlayer: true);
+            }
             FlattenHorizontalRotation();
             currentLurkSubState = LurkSubState.None;
             TriggerFakeEscape("Player rushed the lurking ghost at close range!");
@@ -1472,12 +1589,6 @@ public class GhostAI : MonoBehaviour
                 currentLurkSubState = LurkSubState.PeekingAtPlayer;
                 m_LurkHoldTimer = 0f;
                 m_LurkEyeContactTimer = 0f;
-
-                if (!m_HasDroppedLurkCornerTrace)
-                {
-                    m_HasDroppedLurkCornerTrace = true;
-                    SpawnLurkCornerTrace(m_LurkPeekPosition);
-                }
 
                 Debug.Log($"[{gameObject.name}] Leaning {lurkPeekLeanAngle:F0} deg around corner in BLUE — watching player from peripheral vision!");
             }
@@ -1612,6 +1723,13 @@ public class GhostAI : MonoBehaviour
         if (currentLurkSubState == LurkSubState.DuckingBack)
             return;
 
+        if (!m_HasDroppedLurkCornerTrace)
+        {
+            m_HasDroppedLurkCornerTrace = true;
+            // BLUE if the player made eye contact with her peek; PURPLE if she watched you unseen and slipped back into the dark!
+            SpawnLurkCornerTrace(m_LurkPeekPosition, m_LurkLeanOpenDirection, wasExposedToPlayer: m_HasMadeLurkEyeContact);
+        }
+
         currentLurkSubState = LurkSubState.DuckingBack;
         Debug.Log($"[{gameObject.name}] Ducking back behind corner into ambush (waiting inside 4m Danger Meter trap)!");
     }
@@ -1630,9 +1748,22 @@ public class GhostAI : MonoBehaviour
         Debug.Log($"[{gameObject.name}] Ghost tucked back into '{(m_CurrentSpot != null ? m_CurrentSpot.SpotName : "cover")}' — waiting in ambush!");
     }
 
-    private void SpawnLurkCornerTrace(Vector3 cornerPos)
+    private void SpawnLurkCornerTrace(Vector3 cornerPos, Vector3 leanOpenDir, bool wasExposedToPlayer)
     {
-        if (!leaveUVTraceTrail || m_TracePool.Count == 0)
+        if (m_TracePool.Count == 0)
+            return;
+
+        Color uvColor = wasExposedToPlayer ? visibleStateTraceUVColor : invisibleStateTraceUVColor;
+        string colorLabel = wasExposedToPlayer ? "BLUE (Spotted Peek)" : "PURPLE (Unseen Peek)";
+
+        // Stage 3C: Stamp a creepy child-sized 5-finger UV handprint right on the doorframe/wall corner she braced against!
+        if (leaveUVHandprints && TryFindLurkCornerWallHit(cornerPos, leanOpenDir, out RaycastHit cornerWallHit))
+        {
+            SpawnWallHandprintAtHit(cornerWallHit, leanOpenDir, uvColor, isCornerGrip: true, contextLabel: $"Lurk Corner [{colorLabel}]");
+            return;
+        }
+
+        if (!leaveUVTraceTrail)
             return;
 
         float floorY = FindFloorHeightAt(cornerPos);
@@ -1648,9 +1779,269 @@ public class GhostAI : MonoBehaviour
                 new Vector3(0.42f, 0.42f, 1.0f),
                 traceLifetimeSeconds,
                 GhostTrace.TraceVisualType.ResidualRing,
-                visibleStateTraceUVColor
+                uvColor
             );
         }
+    }
+
+    private bool TryFindLurkCornerWallHit(Vector3 cornerPos, Vector3 leanOpenDir, out RaycastHit bestWallHit)
+    {
+        bestWallHit = default;
+        float floorY = FindFloorHeightAt(cornerPos);
+        float handY = floorY + handprintHeightOffset;
+        Vector3 handOrigin = new Vector3(cornerPos.x, handY, cornerPos.z);
+
+        Vector3 intoWallDir = new Vector3(-leanOpenDir.x, 0f, -leanOpenDir.z);
+        if (intoWallDir.sqrMagnitude < 0.001f)
+            intoWallDir = -transform.right;
+        else
+            intoWallDir.Normalize();
+
+        // 1. Raycast directly toward the doorframe/corner wall opposite her lean direction
+        bool foundPrimary = TryFindWallSurfaceHit(handOrigin + leanOpenDir * 0.22f, intoWallDir, 1.55f, out RaycastHit primaryHit);
+
+        // Fallback: check slightly angled rays or 8-way radial scan if the corner edge was at an oblique doorway angle
+        if (!foundPrimary)
+        {
+            Vector3 angledA = (Quaternion.Euler(0f, 32f, 0f) * intoWallDir).normalized;
+            Vector3 angledB = (Quaternion.Euler(0f, -32f, 0f) * intoWallDir).normalized;
+            if (TryFindWallSurfaceHit(handOrigin, angledA, 1.55f, out primaryHit))
+            {
+                foundPrimary = true;
+            }
+            else if (TryFindWallSurfaceHit(handOrigin, angledB, 1.55f, out primaryHit))
+            {
+                foundPrimary = true;
+            }
+            else
+            {
+                float bestRadialDist = float.MaxValue;
+                for (int r = 0; r < 8; r++)
+                {
+                    float rad = (r * 45f) * Mathf.Deg2Rad;
+                    Vector3 radialDir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+                    if (TryFindWallSurfaceHit(handOrigin, radialDir, 1.75f, out RaycastHit radialHit) && radialHit.distance < bestRadialDist)
+                    {
+                        bestRadialDist = radialHit.distance;
+                        primaryHit = radialHit;
+                        foundPrimary = true;
+                    }
+                }
+            }
+        }
+
+        if (!foundPrimary || primaryHit.collider == null)
+            return false;
+
+        // 2. If primaryHit struck a thin doorway jamb end-cap, check if that same wall has a wider player-facing front face right beside the corner!
+        if (playerHead != null)
+        {
+            Vector3 toPlayerFlat = playerHead.position - primaryHit.point;
+            toPlayerFlat.y = 0f;
+            if (toPlayerFlat.sqrMagnitude > 0.01f)
+            {
+                toPlayerFlat.Normalize();
+                // Step ~22cm inward along the wall away from the open doorway and raycast from the player's side onto the wall face
+                Vector3 frontProbeOrigin = primaryHit.point + (intoWallDir * 0.22f) + (toPlayerFlat * 0.85f);
+                frontProbeOrigin.y = handY;
+                Ray frontRay = new Ray(frontProbeOrigin, -toPlayerFlat);
+
+                if (primaryHit.collider.Raycast(frontRay, out RaycastHit frontFaceHit, 1.35f) &&
+                    Mathf.Abs(frontFaceHit.normal.y) < 0.45f &&
+                    Vector3.Dot(frontFaceHit.normal, toPlayerFlat) > 0.35f)
+                {
+                    Bounds wb = primaryHit.collider.bounds;
+                    Vector3 frontNormal = new Vector3(frontFaceHit.normal.x, 0f, frontFaceHit.normal.z).normalized;
+                    Vector3 frontTangent = Vector3.Cross(Vector3.up, -frontNormal).normalized;
+                    float frontHalfWidth = Mathf.Abs(frontTangent.x) * wb.extents.x + Mathf.Abs(frontTangent.z) * wb.extents.z;
+
+                    if (frontHalfWidth >= handprintSize.x * 0.65f)
+                    {
+                        bestWallHit = frontFaceHit;
+                        return true;
+                    }
+                }
+            }
+        }
+
+        bestWallHit = primaryHit;
+        return true;
+    }
+
+    private Vector3 ClampPointInsideWallFace(Vector3 rawPoint, Vector3 wallNormal, Collider wallCollider, float halfPrintWidth, float halfPrintHeight)
+    {
+        if (wallCollider == null)
+            return rawPoint;
+
+        Bounds wb = wallCollider.bounds;
+        Vector3 clamped = rawPoint;
+
+        float minY = wb.min.y + halfPrintHeight + 0.03f;
+        float maxY = wb.max.y - halfPrintHeight - 0.03f;
+        if (minY <= maxY)
+        {
+            clamped.y = Mathf.Clamp(clamped.y, minY, maxY);
+        }
+
+        Vector3 wallTangent = Vector3.Cross(Vector3.up, -wallNormal).normalized;
+        float tangentHalfExtent = Mathf.Abs(wallTangent.x) * wb.extents.x + Mathf.Abs(wallTangent.z) * wb.extents.z;
+        float safeMargin = Mathf.Min(tangentHalfExtent * 0.55f, halfPrintWidth + 0.025f);
+        float maxTangentOffset = Mathf.Max(0f, tangentHalfExtent - safeMargin);
+
+        Vector3 centerToPoint = clamped - wb.center;
+        float currentTangentOffset = Vector3.Dot(centerToPoint, wallTangent);
+        float clampedTangentOffset = Mathf.Clamp(currentTangentOffset, -maxTangentOffset, maxTangentOffset);
+        clamped += wallTangent * (clampedTangentOffset - currentTangentOffset);
+
+        // Doorway-edge geometry verification (supports interior doorways on MeshColliders as well as BoxColliders!)
+        float edgeProbeOffset = halfPrintWidth * 0.90f;
+        Ray leftEdgeRay = new Ray(clamped - wallTangent * edgeProbeOffset + wallNormal * 0.14f, -wallNormal);
+        Ray rightEdgeRay = new Ray(clamped + wallTangent * edgeProbeOffset + wallNormal * 0.14f, -wallNormal);
+        bool leftSupported = wallCollider.Raycast(leftEdgeRay, out _, 0.28f);
+        bool rightSupported = wallCollider.Raycast(rightEdgeRay, out _, 0.28f);
+
+        if (!leftSupported && rightSupported)
+        {
+            clamped += wallTangent * (halfPrintWidth + 0.02f);
+        }
+        else if (!rightSupported && leftSupported)
+        {
+            clamped -= wallTangent * (halfPrintWidth + 0.02f);
+        }
+
+        Ray centerSnapRay = new Ray(clamped + wallNormal * 0.14f, -wallNormal);
+        if (wallCollider.Raycast(centerSnapRay, out RaycastHit snapHit, 0.28f))
+        {
+            clamped = snapHit.point;
+        }
+
+        return clamped;
+    }
+
+    private void SpawnWallHandprintAtHit(
+        RaycastHit hit,
+        Vector3 referenceSideDir,
+        Color uvColor,
+        bool isCornerGrip,
+        string contextLabel,
+        float forcedSeed = 0f)
+    {
+        GhostTrace trace = GetNextPooledTrace(isHighPriorityWallMark: true);
+        if (trace == null)
+            return;
+
+        Vector3 wallNormal = new Vector3(hit.normal.x, 0f, hit.normal.z);
+        if (wallNormal.sqrMagnitude < 0.001f)
+            wallNormal = hit.normal.normalized;
+        else
+            wallNormal.Normalize();
+
+        float printW = Mathf.Max(0.10f, handprintSize.x);
+        float printH = Mathf.Max(0.12f, handprintSize.y);
+
+        float floorY = FindFloorHeightAt(hit.point + wallNormal * 0.16f);
+        Vector3 desiredWallPoint = new Vector3(hit.point.x, floorY + handprintHeightOffset, hit.point.z);
+        Vector3 safeWallPoint = ClampPointInsideWallFace(desiredWallPoint, wallNormal, hit.collider, printW * 0.5f, printH * 0.5f);
+        Vector3 finalPos = safeWallPoint + wallNormal * 0.020f;
+
+        Quaternion baseWallRot = Quaternion.LookRotation(-wallNormal, Vector3.up);
+        Vector3 quadRight = Vector3.Cross(Vector3.up, -wallNormal).normalized;
+
+        float seedSign;
+        float rollDegrees;
+
+        if (Mathf.Abs(forcedSeed) > 0.001f)
+        {
+            seedSign = forcedSeed >= 0f ? 1f : -1f;
+            rollDegrees = seedSign > 0f ? 11f : -11f;
+        }
+        else if (isCornerGrip)
+        {
+            // Open doorway on viewer-right (+quadRight) -> Left Hand (_TraceSeed < 0) tilted inward onto the wall!
+            // Open doorway on viewer-left  (-quadRight) -> Right Hand (_TraceSeed > 0) tilted inward onto the wall!
+            float openSide = Vector3.Dot(referenceSideDir, quadRight);
+            if (openSide >= 0f)
+            {
+                seedSign = -1f;
+                rollDegrees = -Random.Range(12f, 18f);
+            }
+            else
+            {
+                seedSign = 1f;
+                rollDegrees = Random.Range(12f, 18f);
+            }
+        }
+        else
+        {
+            // Trailing wall-brush handprint: tilt slightly forward along movement direction
+            float travelDotRight = Vector3.Dot(referenceSideDir, quadRight);
+            seedSign = travelDotRight >= 0f ? -1f : 1f;
+            rollDegrees = (travelDotRight >= 0f ? 1f : -1f) * Random.Range(8f, 15f);
+        }
+
+        float finalSeed = Mathf.Abs(forcedSeed) > 0.001f
+            ? forcedSeed
+            : seedSign * Random.Range(0.35f, 9.85f);
+
+        Quaternion handRot = Quaternion.AngleAxis(rollDegrees, wallNormal) * baseWallRot;
+        Vector3 handScale = new Vector3(printW, printH, 1.0f);
+
+        trace.ActivateTrace(
+            finalPos,
+            handRot,
+            wallNormal,
+            handScale,
+            wallMarkLifetimeSeconds,
+            GhostTrace.TraceVisualType.Handprint,
+            uvColor,
+            finalSeed,
+            null,
+            hit.collider
+        );
+
+        string handSide = finalSeed >= 0f ? "Right Hand" : "Left Hand";
+        Debug.Log($"[{gameObject.name}] Spawned UV Handprint ({handSide}, {contextLabel}) on '{(hit.collider != null ? hit.collider.name : "Wall")}' at {finalPos}");
+    }
+
+    private void UpdateWallBrushHandprint(Vector3 movementDirection)
+    {
+        if (!leaveUVHandprints || !enableWallBrushHandprints || isPhasingThroughWall || m_TracePool.Count == 0)
+            return;
+
+        if (Time.time - m_LastWallBrushHandprintTime < wallBrushHandprintCooldown)
+            return;
+
+        if (Time.time < m_NextWallBrushCheckTime)
+            return;
+
+        m_NextWallBrushCheckTime = Time.time + 0.22f;
+
+        Vector3 forwardFlat = new Vector3(movementDirection.x, 0f, movementDirection.z);
+        if (forwardFlat.sqrMagnitude < 0.001f)
+            return;
+        forwardFlat.Normalize();
+
+        Vector3 rightAxis = Vector3.Cross(Vector3.up, forwardFlat).normalized;
+        float floorY = FindFloorHeightAt(transform.position);
+        Vector3 shoulderOrigin = new Vector3(transform.position.x, floorY + handprintHeightOffset, transform.position.z);
+
+        bool hitRight = TryFindWallSurfaceHit(shoulderOrigin, rightAxis, 0.78f, out RaycastHit rightHit);
+        bool hitLeft = TryFindWallSurfaceHit(shoulderOrigin, -rightAxis, 0.78f, out RaycastHit leftHit);
+
+        if (!hitRight && !hitLeft)
+            return;
+
+        RaycastHit chosenHit = (hitRight && (!hitLeft || rightHit.distance <= leftHit.distance)) ? rightHit : leftHit;
+        m_LastWallBrushHandprintTime = Time.time;
+
+        string colorMode = IsGhostCurrentlyInvisible ? "PURPLE (Invisible)" : "BLUE (Visible)";
+        SpawnWallHandprintAtHit(
+            chosenHit,
+            forwardFlat,
+            GetActiveTraceUVColor(),
+            isCornerGrip: false,
+            contextLabel: $"Wall Brush [{colorMode}]"
+        );
     }
 
     private bool TryFindLurkPeekPosition(Vector3 spotOrigin, float maxSearchRadius, out Vector3 bestPeekPos, out Vector3 bestLeanOpenDir)
@@ -1913,6 +2304,7 @@ public class GhostAI : MonoBehaviour
             transform.position = new Vector3(nextFlatPos.x, hoverY, nextFlatPos.z);
 
             UpdateTraceTrail(m_LastPathForward);
+            UpdateWallBrushHandprint(m_LastPathForward);
         }
         else
         {
@@ -2030,6 +2422,9 @@ public class GhostAI : MonoBehaviour
         bool effectivelyIlluminated = m_GhostTarget != null && m_GhostTarget.IsIlluminated && !isCloakedWhileFleeing;
         float captureProgress = (m_GhostTarget != null && !isCloakedWhileFleeing) ? m_GhostTarget.CurrentProgressNormalized : 0f;
 
+        // Stage 1D: Evaluate Behind-Wall 90-Degree Corner Cuts & Open-Floor Diagonal Feints!
+        UpdateTacticalCornerCuts(effectivelyIlluminated, captureProgress, ref targetPos);
+
         // 1. Reactive Flashlight Panic + Stage 2 Beam-Lock Slowdown! (Normal Flashlight does nothing while cloaked-fleeing > 1.5m!)
         float activeSpeed = fleeSpeed;
         float activeWeaveAmp = weaveAmplitude;
@@ -2054,6 +2449,16 @@ public class GhostAI : MonoBehaviour
         // Smoothly curve dodge side changes instead of snapping left/right in 1 frame
         m_SmoothedJukeSign = Mathf.SmoothDamp(m_SmoothedJukeSign, m_JukeSign, ref m_JukeSignVelocity, 0.48f);
 
+        // Stage 1D: Supernatural agility speed burst during a sharp sideways corner cut
+        if (m_CornerCutBurstTimer > 0f)
+        {
+            m_CornerCutBurstTimer = Mathf.Max(0f, m_CornerCutBurstTimer - Time.deltaTime);
+            float burstBlend = m_CornerCutBurstTotalDuration > 0.01f
+                ? Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(m_CornerCutBurstTimer / m_CornerCutBurstTotalDuration))
+                : 0f;
+            activeSpeed *= Mathf.Lerp(1.0f, m_ActiveCutSpeedMultiplier, burstBlend);
+        }
+
         // Stage 2: As capture progress rises (0% -> 100%), the beam drags down her speed ("Beam-Lock")!
         if (enableBeamStruggle && captureProgress > 0.01f)
         {
@@ -2064,17 +2469,45 @@ public class GhostAI : MonoBehaviour
 
         activeSpeed *= GetActiveWallSpeedMultiplier();
 
-        // 2. Advance Core Path Toward Hiding Spot
-        m_CorePathPosition = Vector3.MoveTowards(m_CorePathPosition, targetPos, activeSpeed * Time.deltaTime);
+        // 2. Advance Core Path (Through Tactical Corner-Cut Waypoint First if Active, Then Final Hiding Spot!)
+        Vector3 activeNavTarget = isPerformingCornerCut ? m_ActiveCutWaypoint : targetPos;
+        m_CorePathPosition = Vector3.MoveTowards(m_CorePathPosition, activeNavTarget, activeSpeed * Time.deltaTime);
+
+        if (isPerformingCornerCut)
+        {
+            m_ActiveCutLegTimer += Time.deltaTime;
+            float distToCutXZ = Vector2.Distance(
+                new Vector2(m_CorePathPosition.x, m_CorePathPosition.z),
+                new Vector2(m_ActiveCutWaypoint.x, m_ActiveCutWaypoint.z)
+            );
+
+            // Round off the dogleg apex smoothly into the final hiding-spot leg with zero pause!
+            if (distToCutXZ <= 0.35f || m_ActiveCutLegTimer >= 2.2f)
+            {
+                isPerformingCornerCut = false;
+                activeNavTarget = targetPos;
+            }
+        }
+
+        Vector3 legDelta = activeNavTarget - m_CorePathPosition;
+        Vector3 flatLegDelta = new Vector3(legDelta.x, 0f, legDelta.z);
+        if (flatLegDelta.sqrMagnitude > 0.0001f)
+        {
+            Vector3 desiredForward = flatLegDelta.normalized;
+            if (m_LastPathForward.sqrMagnitude < 0.0001f)
+            {
+                m_LastPathForward = desiredForward;
+            }
+            else
+            {
+                // Smooth ~430 deg/s arc prevents any 1-frame lateral pop when slicing 84 degrees sideways!
+                m_LastPathForward = Vector3.RotateTowards(m_LastPathForward, desiredForward, 7.5f * Time.deltaTime, 0f).normalized;
+            }
+        }
 
         Vector3 remainingToTarget = targetPos - m_CorePathPosition;
         Vector3 flatRemaining = new Vector3(remainingToTarget.x, 0f, remainingToTarget.z);
         float remainingFlatDistance = flatRemaining.magnitude;
-
-        if (flatRemaining.sqrMagnitude > 0.0001f)
-        {
-            m_LastPathForward = flatRemaining / remainingFlatDistance;
-        }
 
         // 3. Smooth Floating S-Curve Lateral Glide (Critically Damped, Zero Sharp Corners)
         float desiredLateralOffset = 0f;
@@ -2092,8 +2525,9 @@ public class GhostAI : MonoBehaviour
                 : 1.0f;
             float startRamp = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(m_FleeElapsedSeconds / 0.65f));
             float wallWeaveDamping = Mathf.Lerp(1.0f, 0.25f, m_CurrentWallPhaseBlend);
+            float cutPrecisionDamping = isPerformingCornerCut ? 0.55f : 1.0f;
 
-            desiredLateralOffset = combinedWave * activeWeaveAmp * arrivalTaper * startRamp * wallWeaveDamping;
+            desiredLateralOffset = combinedWave * activeWeaveAmp * arrivalTaper * startRamp * wallWeaveDamping * cutPrecisionDamping;
         }
 
         float effectiveSmoothTime = Mathf.Max(0.10f, weaveSmoothTime);
@@ -2124,10 +2558,18 @@ public class GhostAI : MonoBehaviour
             Quaternion targetRotation = Quaternion.LookRotation(normalizedDir);
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * 0.75f * Time.deltaTime);
             UpdateTraceTrail(normalizedDir);
+            if (isPerformingCornerCut)
+            {
+                UpdateWallBrushHandprint(normalizedDir);
+            }
         }
         else
         {
             UpdateTraceTrail(m_LastPathForward);
+            if (isPerformingCornerCut)
+            {
+                UpdateWallBrushHandprint(m_LastPathForward);
+            }
         }
 
         // 6. Check Arrival at Hiding Spot (+ Stage 1 Anti-Frustration Beam Burn-Lock!)
@@ -2159,6 +2601,7 @@ public class GhostAI : MonoBehaviour
             m_LuresPerformedThisHide = 0;
             currentLurkSubState = LurkSubState.None;
             isCloakedWhileFleeing = false;
+            ResetCornerCutState(clearForcedFlag: false);
             if (m_GhostTarget != null)
             {
                 m_GhostTarget.SetCloakCaptureImmunity(false);
@@ -2167,6 +2610,391 @@ public class GhostAI : MonoBehaviour
             ScheduleNextLurkDelay();
             Debug.Log($"[{gameObject.name}] Ghost safely reached hiding spot '{m_CurrentSpot.SpotName}' — dematerializing into cloak.");
         }
+    }
+
+    // =========================================================================
+    // STAGE 1D: TACTICAL LINE-OF-SIGHT CORNER CUTS & OPEN-FLOOR FEINTS
+    // =========================================================================
+    private void ResetCornerCutState(bool clearForcedFlag)
+    {
+        isPerformingCornerCut = false;
+        m_ArmedCornerCutForThisChase = false;
+        m_HasExecutedCoverCornerCut = false;
+        m_HasExecutedOpenFeint = false;
+        m_HadLineOfSightDuringFlee = false;
+        m_ExitedWallDuringFlee = false;
+        m_WasPhasingLastFrameForCut = false;
+        m_CoverHiddenFleeTimer = 0f;
+        m_OpenSightFleeTimer = 0f;
+        m_ActiveCutLegTimer = 0f;
+        m_CornerCutBurstTimer = 0f;
+
+        if (clearForcedFlag)
+        {
+            m_ForceNextEscapeCornerCut = false;
+        }
+    }
+
+    private void UpdateTacticalCornerCuts(bool effectivelyIlluminated, float captureProgress, ref Vector3 targetPos)
+    {
+        if (m_WasPhasingLastFrameForCut && !isPhasingThroughWall)
+        {
+            m_ExitedWallDuringFlee = true;
+        }
+        m_WasPhasingLastFrameForCut = isPhasingThroughWall;
+
+        bool tierEnabled = IsCornerCutTierActive || m_ArmedCornerCutForThisChase;
+        if (!tierEnabled || playerHead == null)
+            return;
+
+        bool hasLOSNow = HasLineOfSightToPlayer();
+        if (hasLOSNow)
+        {
+            m_HadLineOfSightDuringFlee = true;
+            m_CoverHiddenFleeTimer = 0f;
+            if (!isPhasingThroughWall)
+            {
+                m_OpenSightFleeTimer += Time.deltaTime;
+            }
+        }
+        else if (!isPhasingThroughWall)
+        {
+            m_OpenSightFleeTimer = 0f;
+            m_CoverHiddenFleeTimer += Time.deltaTime;
+        }
+
+        float distToFinalSpotXZ = Vector2.Distance(
+            new Vector2(m_CorePathPosition.x, m_CorePathPosition.z),
+            new Vector2(targetPos.x, targetPos.z)
+        );
+
+        // 1. BEHIND-WALL ~90-DEGREE CORNER CUT:
+        // Triggers once she breaks your line-of-sight behind solid cover (or bursts out the far side of a wall)!
+        if (!hasLOSNow &&
+            !isPhasingThroughWall &&
+            !effectivelyIlluminated &&
+            !m_HasExecutedCoverCornerCut &&
+            (m_HadLineOfSightDuringFlee || m_ExitedWallDuringFlee) &&
+            m_CoverHiddenFleeTimer >= 0.14f &&
+            distToFinalSpotXZ >= 2.4f)
+        {
+            m_HasExecutedCoverCornerCut = true;
+
+            float roundBonus = activeRoundNumber >= 6 ? 0.15f : (activeRoundNumber == 5 ? 0.08f : 0f);
+            float effectiveChance = Mathf.Clamp01(cornerCutChance + roundBonus);
+
+            if (m_ArmedCornerCutForThisChase || Random.value <= effectiveChance)
+            {
+                bool redirectedSpot = false;
+                if (enableMidChaseSpotRedirect && TryRedirectTargetSpotOffAxis(out GhostHidingSpot newSpot))
+                {
+                    m_TargetSpot = newSpot;
+                    targetPos = m_TargetSpot.Position;
+                    redirectedSpot = true;
+                }
+
+                if (TryComputeCoverCornerCutWaypoint(targetPos, out Vector3 cutWaypoint))
+                {
+                    ActivateCutWaypoint(cutWaypoint, cornerCutBurstDuration, cornerCutSpeedMultiplier);
+
+                    // Stamp a UV footprint right at the pivot apex so UV hunters can read the exact 90-degree turn!
+                    if (leaveUVTraceTrail && traceStepSpacing > 0.05f)
+                    {
+                        m_LastTraceDropPosition = transform.position - (m_LastPathForward * (traceStepSpacing * 0.92f));
+                    }
+
+                    string redirectTag = redirectedSpot ? $" + Redirected destination to '{m_TargetSpot.SpotName}'" : string.Empty;
+                    Debug.Log($"[{gameObject.name}] *** TACTICAL CORNER CUT! *** Broke line-of-sight behind cover -> Slicing sideways to {cutWaypoint}{redirectTag}!");
+                }
+                else if (redirectedSpot)
+                {
+                    m_CornerCutBurstTimer = cornerCutBurstDuration * 0.75f;
+                    m_CornerCutBurstTotalDuration = Mathf.Max(0.1f, m_CornerCutBurstTimer);
+                    m_ActiveCutSpeedMultiplier = cornerCutSpeedMultiplier;
+                    Debug.Log($"[{gameObject.name}] *** COVER REDIRECT! *** Broke line-of-sight -> Switched hiding destination mid-chase to '{m_TargetSpot.SpotName}'!");
+                }
+            }
+            return;
+        }
+
+        // 2. OPEN-FLOOR DIAGONAL FEINT:
+        // If caught in open view without cover in Late Rounds (and capture progress is still < 50%), execute one crisp diagonal break-step!
+        if (hasLOSNow &&
+            !isPhasingThroughWall &&
+            enableOpenFloorFeintCut &&
+            !m_HasExecutedOpenFeint &&
+            !isPerformingCornerCut &&
+            m_OpenSightFleeTimer >= 1.10f &&
+            captureProgress < 0.50f &&
+            distToFinalSpotXZ >= 3.4f)
+        {
+            m_HasExecutedOpenFeint = true;
+
+            if (m_ArmedCornerCutForThisChase || Random.value <= openFloorFeintChance)
+            {
+                if (TryComputeOpenFloorFeintWaypoint(out Vector3 feintWaypoint, out float chosenSideSign))
+                {
+                    m_JukeSign = chosenSideSign;
+                    ActivateCutWaypoint(
+                        feintWaypoint,
+                        0.65f,
+                        Mathf.Max(1.12f, cornerCutSpeedMultiplier * 0.94f)
+                    );
+                    Debug.Log($"[{gameObject.name}] *** OPEN-FLOOR FEINT CUT! *** Breaking diagonally ({(chosenSideSign > 0f ? "Right" : "Left")}) away from player's aim!");
+                }
+            }
+        }
+    }
+
+    private void ActivateCutWaypoint(Vector3 waypoint, float burstDuration, float burstSpeedMult)
+    {
+        m_ActiveCutWaypoint = waypoint;
+        m_ActiveCutLegTimer = 0f;
+        isPerformingCornerCut = true;
+        m_CornerCutBurstTotalDuration = Mathf.Max(0.10f, burstDuration);
+        m_CornerCutBurstTimer = m_CornerCutBurstTotalDuration;
+        m_ActiveCutSpeedMultiplier = Mathf.Max(1.0f, burstSpeedMult);
+    }
+
+    private bool TryRedirectTargetSpotOffAxis(out GhostHidingSpot redirectedSpot)
+    {
+        redirectedSpot = null;
+        if (hidingSpots.Count <= 2 || playerHead == null)
+            return false;
+
+        Vector3 playerPos = playerHead.position;
+        Vector3 currentHeading = m_LastPathForward.sqrMagnitude > 0.001f ? m_LastPathForward.normalized : transform.forward;
+        currentHeading.y = 0f;
+        if (currentHeading.sqrMagnitude < 0.001f)
+            currentHeading = Vector3.forward;
+        else
+            currentHeading.Normalize();
+
+        float bestScore = float.MinValue;
+
+        for (int i = 0; i < hidingSpots.Count; i++)
+        {
+            GhostHidingSpot candidate = hidingSpots[i];
+            if (candidate == null || candidate == m_CurrentSpot || candidate == m_TargetSpot)
+                continue;
+
+            Vector3 spotPos = candidate.Position;
+            float distToPlayer = Vector3.Distance(spotPos, playerPos);
+            if (distToPlayer <= triggerProximityDistance + 1.2f)
+                continue;
+
+            // Only redirect to a spot the player cannot currently see!
+            if (HasLineOfSightFromPlayerToPoint(spotPos + Vector3.up * 0.5f))
+                continue;
+
+            Vector3 flatToCand = new Vector3(spotPos.x - m_CorePathPosition.x, 0f, spotPos.z - m_CorePathPosition.z);
+            float distFromGhost = flatToCand.magnitude;
+            if (distFromGhost < 2.2f)
+                continue;
+
+            float turnAngle = Vector3.Angle(currentHeading, flatToCand / distFromGhost);
+            // Must be a genuine sideways turn (36 - 142 deg), not straight ahead or running straight back into the player!
+            if (turnAngle < 36f || turnAngle > 142f)
+                continue;
+
+            float score = 30f;
+            // Peak bonus around a sharp 60 - 105 degree sideways turn
+            score += (1.0f - Mathf.Clamp01(Mathf.Abs(turnAngle - 82f) / 65f)) * 28f;
+
+            if (candidate == m_PreviousSpot && hidingSpots.Count > 3)
+            {
+                score -= 24f;
+            }
+
+            score += Random.Range(0f, 8f);
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                redirectedSpot = candidate;
+            }
+        }
+
+        return redirectedSpot != null;
+    }
+
+    private bool TryComputeCoverCornerCutWaypoint(Vector3 finalTargetPos, out Vector3 bestWaypoint)
+    {
+        bestWaypoint = m_CorePathPosition;
+        if (playerHead == null)
+            return false;
+
+        Vector3 forward = m_LastPathForward;
+        forward.y = 0f;
+        if (forward.sqrMagnitude < 0.001f)
+            forward = Vector3.forward;
+        else
+            forward.Normalize();
+
+        Vector3 rightAxis = Vector3.Cross(Vector3.up, forward).normalized;
+        Vector3 toFinalFlat = new Vector3(finalTargetPos.x - m_CorePathPosition.x, 0f, finalTargetPos.z - m_CorePathPosition.z);
+        float finalSideDot = toFinalFlat.sqrMagnitude > 0.01f ? Vector3.Dot(toFinalFlat.normalized, rightAxis) : 0f;
+
+        Vector3 playerPos = playerHead.position;
+        float currentDistToPlayer = Vector3.Distance(m_CorePathPosition, playerPos);
+        float baseFloorY = FindFloorHeightAt(m_CorePathPosition);
+        Vector3 chestOrigin = new Vector3(m_CorePathPosition.x, baseFloorY + 1.15f, m_CorePathPosition.z);
+
+        float bestScore = float.MinValue;
+        bool found = false;
+
+        for (int a = 0; a < s_CoverCutCandidateAngles.Length; a++)
+        {
+            float angleDeg = s_CoverCutCandidateAngles[a];
+            Vector3 cutDir = (Quaternion.Euler(0f, angleDeg, 0f) * forward).normalized;
+
+            float maxDesired = cornerCutLateralDistance;
+            float rayCheckDist = maxDesired + 0.65f;
+            float maxSafeTravel = maxDesired;
+
+            if (TryGetClosestWallAlongRay(chestOrigin, cutDir, rayCheckDist, out float wallDist))
+            {
+                maxSafeTravel = Mathf.Min(maxDesired, wallDist - 0.58f);
+            }
+
+            if (maxSafeTravel < 1.35f)
+                continue;
+
+            for (int s = 0; s < s_CoverCutScaleSteps.Length; s++)
+            {
+                float legDist = maxSafeTravel * s_CoverCutScaleSteps[s];
+                if (legDist < 1.35f)
+                    continue;
+
+                Vector3 candPos = new Vector3(
+                    m_CorePathPosition.x + cutDir.x * legDist,
+                    m_BaseYPosition,
+                    m_CorePathPosition.z + cutDir.z * legDist
+                );
+
+                float candDistToPlayer = Vector3.Distance(candPos, playerPos);
+                if (candDistToPlayer <= triggerProximityDistance + 0.8f)
+                    continue;
+
+                float candFloorY = FindFloorHeightAt(candPos);
+                Vector3 candChest = new Vector3(candPos.x, candFloorY + 1.15f, candPos.z);
+                Vector3 candEye = new Vector3(candPos.x, candFloorY + 1.40f, candPos.z);
+
+                if (IsPointInsideWall(candChest, 0.36f))
+                    continue;
+
+                // Stay hidden behind the wall rather than cutting back out into the player's open sightline!
+                if (HasLineOfSightFromPlayerToPoint(candEye))
+                    continue;
+
+                float score = 0f;
+                // Reward sharp ~84-degree cuts and longer open corridor travel
+                score += Mathf.Abs(angleDeg) >= 80f ? 24f : 12f;
+                score += legDist * 5.5f;
+
+                if (candDistToPlayer >= currentDistToPlayer - 0.35f)
+                {
+                    score += 14f;
+                }
+
+                // Prefer cutting toward the side that naturally flows into her final hiding spot
+                float cutSideSign = Mathf.Sign(angleDeg);
+                if (Mathf.Abs(finalSideDot) > 0.15f && Mathf.Sign(finalSideDot) == cutSideSign)
+                {
+                    score += 18f;
+                }
+
+                score += Random.Range(0f, 5f);
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestWaypoint = candPos;
+                    found = true;
+                }
+
+                // Full-length step succeeded along this angle, no need to test shorter step on the same ray
+                break;
+            }
+        }
+
+        return found;
+    }
+
+    private bool TryComputeOpenFloorFeintWaypoint(out Vector3 bestWaypoint, out float bestSideSign)
+    {
+        bestWaypoint = m_CorePathPosition;
+        bestSideSign = 1f;
+
+        if (playerHead == null)
+            return false;
+
+        Vector3 forward = m_LastPathForward;
+        forward.y = 0f;
+        if (forward.sqrMagnitude < 0.001f)
+            forward = Vector3.forward;
+        else
+            forward.Normalize();
+
+        Vector3 playerPos = playerHead.position;
+        Vector3 playerLook = playerHead.forward;
+        playerLook.y = 0f;
+        if (playerLook.sqrMagnitude > 0.001f)
+            playerLook.Normalize();
+
+        float baseFloorY = FindFloorHeightAt(m_CorePathPosition);
+        Vector3 chestOrigin = new Vector3(m_CorePathPosition.x, baseFloorY + 1.15f, m_CorePathPosition.z);
+
+        const float feintAngle = 52f;
+        float desiredStep = Mathf.Clamp(cornerCutLateralDistance * 0.68f, 1.45f, 2.25f);
+        float bestScore = float.MinValue;
+        bool found = false;
+
+        for (int i = 0; i < 2; i++)
+        {
+            float sideSign = i == 0 ? 1f : -1f;
+            Vector3 feintDir = (Quaternion.Euler(0f, feintAngle * sideSign, 0f) * forward).normalized;
+
+            float stepDist = desiredStep;
+            if (TryGetClosestWallAlongRay(chestOrigin, feintDir, desiredStep + 0.55f, out float wallDist))
+            {
+                stepDist = Mathf.Min(desiredStep, wallDist - 0.55f);
+            }
+
+            if (stepDist < 1.25f)
+                continue;
+
+            Vector3 candPos = new Vector3(
+                m_CorePathPosition.x + feintDir.x * stepDist,
+                m_BaseYPosition,
+                m_CorePathPosition.z + feintDir.z * stepDist
+            );
+
+            float distToPlayer = Vector3.Distance(candPos, playerPos);
+            if (distToPlayer <= triggerProximityDistance + 0.85f)
+                continue;
+
+            float candFloorY = FindFloorHeightAt(candPos);
+            if (IsPointInsideWall(new Vector3(candPos.x, candFloorY + 1.15f, candPos.z), 0.36f))
+                continue;
+
+            // Prefer breaking toward whichever side pulls widest off the player's current look/aim ray!
+            Vector3 playerToCandFlat = new Vector3(candPos.x - playerPos.x, 0f, candPos.z - playerPos.z);
+            float offAimAngle = playerToCandFlat.sqrMagnitude > 0.01f
+                ? Vector3.Angle(playerLook, playerToCandFlat.normalized)
+                : 0f;
+
+            float score = offAimAngle * 0.65f + stepDist * 4.0f + Random.Range(0f, 4f);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestWaypoint = candPos;
+                bestSideSign = sideSign;
+                found = true;
+            }
+        }
+
+        return found;
     }
 
     // =========================================================================
@@ -2273,6 +3101,101 @@ public class GhostAI : MonoBehaviour
         Debug.Log($"[{gameObject.name}] Next escape is armed to 100% INVISIBLE FLEE (Purple UV traces + {cloakedFleeRevealDistance:F1}m flashlight break)!");
     }
 
+    /// <summary>
+    /// Play-Mode testing shortcut: right-click GhostAI and choose this to guarantee a Stage 1D Corner Cut on the current/next escape (even in Round 1)!
+    /// </summary>
+    [ContextMenu("Force Next Escape Corner-Cut (Test)")]
+    public void ForceNextEscapeCornerCut()
+    {
+        if (currentState == GhostState.Fleeing)
+        {
+            m_ArmedCornerCutForThisChase = true;
+            m_HasExecutedCoverCornerCut = false;
+            m_HasExecutedOpenFeint = false;
+            Debug.Log($"[{gameObject.name}] Stage 1D Corner-Cut armed LIVE on current chase!");
+            return;
+        }
+
+        m_ForceNextEscapeCornerCut = true;
+        Debug.Log($"[{gameObject.name}] Next escape is armed to 100% TACTICAL CORNER-CUT (breaks sideways behind cover + UV footprint turn)!");
+    }
+
+    /// <summary>
+    /// Play-Mode testing shortcut: stamps a BLUE Right Handprint and PURPLE Left Handprint side-by-side on the nearest wall in front of the player!
+    /// </summary>
+    [ContextMenu("Spawn Test UV Handprints On Nearest Wall (Test)")]
+    public void SpawnTestUVHandprintsOnNearestWall()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning($"[{gameObject.name}] Enter Play Mode first, then run 'Spawn Test UV Handprints On Nearest Wall (Test)' to inspect them with your UV Flashlight!");
+            return;
+        }
+
+        if (m_TracePool.Count == 0)
+        {
+            InitializeTracePool();
+        }
+
+        Transform refTransform = playerHead != null ? playerHead : transform;
+        Vector3 origin = refTransform.position;
+        Vector3 forwardFlat = new Vector3(refTransform.forward.x, 0f, refTransform.forward.z);
+        if (forwardFlat.sqrMagnitude < 0.001f)
+            forwardFlat = Vector3.forward;
+        else
+            forwardFlat.Normalize();
+
+        RaycastHit chosenHit = default;
+        bool foundWall = TryFindWallSurfaceHit(origin, forwardFlat, 8.0f, out chosenHit);
+
+        if (!foundWall)
+        {
+            float closestDist = float.MaxValue;
+            for (int a = 0; a < 12; a++)
+            {
+                float rad = (a * 30f) * Mathf.Deg2Rad;
+                Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+                if (TryFindWallSurfaceHit(origin, dir, 8.0f, out RaycastHit candidateHit) && candidateHit.distance < closestDist)
+                {
+                    closestDist = candidateHit.distance;
+                    chosenHit = candidateHit;
+                    foundWall = true;
+                }
+            }
+        }
+
+        if (!foundWall || chosenHit.collider == null)
+        {
+            Debug.LogWarning($"[{gameObject.name}] Could not find a wall within 8m of '{refTransform.name}' to stamp test UV handprints.");
+            return;
+        }
+
+        Vector3 wallNormal = new Vector3(chosenHit.normal.x, 0f, chosenHit.normal.z).normalized;
+        Vector3 wallRight = Vector3.Cross(Vector3.up, -wallNormal).normalized;
+
+        RaycastHit leftSideHit = chosenHit;
+        leftSideHit.point = chosenHit.point - wallRight * 0.18f;
+        SpawnWallHandprintAtHit(
+            leftSideHit,
+            -wallRight,
+            visibleStateTraceUVColor,
+            isCornerGrip: false,
+            contextLabel: "TEST BLUE Right Hand (Spotted/Visible)",
+            forcedSeed: 1.73f
+        );
+
+        RaycastHit rightSideHit = chosenHit;
+        rightSideHit.point = chosenHit.point + wallRight * 0.18f;
+        SpawnWallHandprintAtHit(
+            rightSideHit,
+            wallRight,
+            invisibleStateTraceUVColor,
+            isCornerGrip: false,
+            contextLabel: "TEST PURPLE Left Hand (Unseen/Invisible)",
+            forcedSeed: -2.41f
+        );
+    }
+
     [ContextMenu("Trigger Fake Escape")]
     public void TriggerFakeEscape(string reason = "Triggered")
     {
@@ -2361,6 +3284,7 @@ public class GhostAI : MonoBehaviour
         m_WasIlluminatedDuringStare = false;
         isCloakedWhileFleeing = false;
         m_ForceNextEscapeCloaked = false;
+        ResetCornerCutState(clearForcedFlag: true);
         transform.localScale = m_InitialLocalScale;
 
         GhostHidingSpot spawnSpot = GetSmartNextHidingSpot();
@@ -2416,6 +3340,12 @@ public class GhostAI : MonoBehaviour
         m_SmoothedJukeSign = m_JukeSign;
         m_JukeSignVelocity = 0f;
         m_NoiseSeed = Random.Range(0f, 100f);
+
+        bool forceCornerCut = m_ForceNextEscapeCornerCut;
+        ResetCornerCutState(clearForcedFlag: true);
+        m_ArmedCornerCutForThisChase = forceCornerCut;
+        m_HadLineOfSightDuringFlee = HasLineOfSightToPlayer();
+        m_WasPhasingLastFrameForCut = isPhasingThroughWall;
 
         bool rollCloakedEscape = m_ForceNextEscapeCloaked ||
             (allowCloakedEscape && enableCloakedFlee && cloakWhileHidden && (Random.value < cloakedFleeChance));
@@ -2536,6 +3466,7 @@ public class GhostAI : MonoBehaviour
         FlattenHorizontalRotation();
         currentLurkSubState = LurkSubState.None;
         isCloakedWhileFleeing = false;
+        ResetCornerCutState(clearForcedFlag: true);
         if (m_GhostTarget != null)
         {
             m_GhostTarget.SetCloakCaptureImmunity(false);
@@ -2564,8 +3495,19 @@ public class GhostAI : MonoBehaviour
         }
         else if (currentState == GhostState.Fleeing && m_TargetSpot != null)
         {
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawLine(m_CorePathPosition, m_TargetSpot.Position);
+            if (isPerformingCornerCut)
+            {
+                Gizmos.color = new Color(1f, 0.62f, 0.12f, 1f);
+                Gizmos.DrawLine(m_CorePathPosition, m_ActiveCutWaypoint);
+                Gizmos.DrawWireSphere(m_ActiveCutWaypoint, 0.24f);
+                Gizmos.color = Color.cyan;
+                Gizmos.DrawLine(m_ActiveCutWaypoint, m_TargetSpot.Position);
+            }
+            else
+            {
+                Gizmos.color = Color.cyan;
+                Gizmos.DrawLine(m_CorePathPosition, m_TargetSpot.Position);
+            }
             Gizmos.DrawWireSphere(m_CorePathPosition, 0.15f);
 
             Gizmos.color = Color.magenta;

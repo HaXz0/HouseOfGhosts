@@ -219,6 +219,10 @@ public class FlashlightRecoveryHighlight : MonoBehaviour
             if (mf.gameObject.name.EndsWith("_XRayOverlay"))
                 continue;
 
+            // Skip runtime volumetric beam cones or any helper mesh under the Spotlight!
+            if (mf.gameObject.name.Contains("VolumetricBeam") || mf.GetComponentInParent<Light>() != null)
+                continue;
+
             MeshRenderer sourceRenderer = mf.GetComponent<MeshRenderer>();
             if (sourceRenderer == null)
                 continue;

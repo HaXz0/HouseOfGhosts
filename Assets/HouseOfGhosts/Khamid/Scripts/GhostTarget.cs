@@ -44,11 +44,11 @@ public class GhostTarget : MonoBehaviour
     [Tooltip("Spectral icy blue color when the ghost phases through a solid wall or materializes.")]
     [SerializeField] private Color wallPhaseColor = new Color(0.16f, 0.72f, 1.0f, 1.0f);
 
-    [Tooltip("Color when the flashlight beam first hits the ghost.")]
-    [SerializeField] private Color startIlluminatedColor = new Color(1f, 0.9f, 0.3f, 1f);
+    [Tooltip("Color when the flashlight beam first hits the ghost (Option A: Spectral Blue).")]
+    [SerializeField] private Color startIlluminatedColor = new Color(0.18f, 0.68f, 1.0f, 1.0f);
 
-    [Tooltip("Color right before the 3-second capture finishes.")]
-    [SerializeField] private Color nearCaptureColor = new Color(1f, 0.2f, 0.1f, 1f);
+    [Tooltip("Color right before the 3-second capture finishes (Option A: Incandescent Icy Silver-Blue).")]
+    [SerializeField] private Color nearCaptureColor = new Color(0.56f, 0.84f, 1.0f, 1.0f);
 
     public enum CaptureVanishStyle
     {
@@ -155,6 +155,23 @@ public class GhostTarget : MonoBehaviour
     [Tooltip("If true on GhostDummy capsules, each dummy capture steps Round 1 -> 2 -> 3 -> 4 -> 5 -> 6 so you can compare all 6 rounds in a row!")]
     [SerializeField] private bool cycleRoundsOnTestDummies = true;
 
+    [Header("Stage 2D: 0s-3s Peeling Soul-Ash Build-Up")]
+    [Tooltip("If true, holding the flashlight beam from 0s to 3s fractures her surface with silver-white veins and peels a live wake of soul-ash into the air!")]
+    [SerializeField] private bool enablePeelingBuildUp = true;
+
+    [Tooltip("Drag VFX_GhostPeelingAshLoop from 'Assets/HouseOfGhosts/Khamid/Partical systems' here.")]
+    [SerializeField] private GameObject peelingAshVfxPrefab;
+
+    [Tooltip("Overall emission intensity multiplier for the 0s-3s peeling soul-ash stream.")]
+    [Range(0.25f, 2.5f)]
+    [SerializeField] private float peelingIntensityMultiplier = 1.0f;
+
+    [Tooltip("If true, the 0s-3s peeling stream starts subtle in Round 1 and grows fiercer up to Round 6!")]
+    [SerializeField] private bool scalePeelingWithRound = true;
+
+    [Tooltip("Radiant silver-white glow color of the 3D soul-fracture veins and flaking silhouette tears.")]
+    [SerializeField] private Color strainCrackColor = new Color(0.96f, 0.99f, 1.0f, 1.0f);
+
     [Header("Events")]
     [Tooltip("Invoked every frame the ghost is illuminated, passing progress from 0.0 to 1.0.")]
     public UnityEvent<float> onCaptureProgress;
@@ -225,6 +242,14 @@ public class GhostTarget : MonoBehaviour
     private MaterialPropertyBlock m_VfxPropBlock;
     private Material m_CreatedMaterialInstance;
 
+    private struct PeelingLayerBaseline
+    {
+        public ParticleSystem System;
+        public ParticleSystemRenderer Renderer;
+        public float BaseRateOverTime;
+        public bool IsSilkWispLayer;
+    }
+
     // Pooled world-space Capture VFX instance (never snapped off when Ghost deactivates)
     private static Transform s_VfxPoolContainer;
     private static int s_NextDummyPreviewRound = 1;
@@ -235,7 +260,20 @@ public class GhostTarget : MonoBehaviour
     private ParticleSystem[] m_PooledVfxSystems;
     private VfxLayerBaseline[] m_PooledVfxBaselines;
 
+    // Pooled world-space 0s-3s Peeling Soul-Ash Loop instance
+    private GameObject m_PooledPeelingSourcePrefab;
+    private GameObject m_PooledPeelingVfxInstance;
+    private ParticleSystem[] m_PooledPeelingSystems;
+    private PeelingLayerBaseline[] m_PooledPeelingBaselines;
+    private bool m_IsPeelingVfxEmitting = false;
+    private float m_PeelingCrosswindSign = 1f;
+    private float m_PeelingWindCheckTimer = 0f;
+    private Vector3 m_CurrentPeelingWindDir = Vector3.forward;
+    private bool m_HasActivePeelingWind = false;
+    private float m_DebugPreviewPeelTimer = 0f;
+
     private static readonly int s_CloudScaleFactorId = Shader.PropertyToID("_CloudScaleFactor");
+    private static readonly int s_DustModeId = Shader.PropertyToID("_DustMode");
 
     private static readonly int s_BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int s_ColorId = Shader.PropertyToID("_Color");
@@ -249,6 +287,8 @@ public class GhostTarget : MonoBehaviour
     private static readonly int s_DissolveEdgeColorId = Shader.PropertyToID("_DissolveEdgeColor");
     private static readonly int s_RimColorId = Shader.PropertyToID("_RimColor");
     private static readonly int s_RimIntensityId = Shader.PropertyToID("_RimIntensity");
+    private static readonly int s_CaptureStrainId = Shader.PropertyToID("_CaptureStrain");
+    private static readonly int s_StrainCrackColorId = Shader.PropertyToID("_StrainCrackColor");
 
     public float CurrentProgressNormalized => Mathf.Clamp01(m_CurrentCaptureTime / requiredCaptureDuration);
     public bool IsIlluminated => m_IsIlluminatedThisFrame;
@@ -294,6 +334,7 @@ public class GhostTarget : MonoBehaviour
     private void Start()
     {
         EnsureCaptureVfxPooled();
+        EnsurePeelingVfxPooled();
     }
 
     private void InitializeRenderersAndMaterial()
@@ -386,6 +427,7 @@ public class GhostTarget : MonoBehaviour
     private void OnDisable()
     {
         ActiveTargets.Remove(this);
+        StopPeelingVfx(clearImmediately: false);
     }
 
     private void OnDestroy()
@@ -404,12 +446,19 @@ public class GhostTarget : MonoBehaviour
         {
             Destroy(m_PooledCaptureVfxInstance);
         }
+
+        if (m_PooledPeelingVfxInstance != null)
+        {
+            Destroy(m_PooledPeelingVfxInstance);
+        }
     }
 
     private void Update()
     {
         if (m_IsCaptured)
         {
+            TickStoppedPeelingCleanup();
+
             if (m_IsPlayingCaptureVanish)
             {
                 UpdateCaptureVanishAnimation();
@@ -427,22 +476,39 @@ public class GhostTarget : MonoBehaviour
             return;
         }
 
-        bool effectivelyIlluminated = m_IsIlluminatedThisFrame && !m_IsCloakCaptureImmune;
+        bool isPreviewingPeel = false;
+        if (m_DebugPreviewPeelTimer > 0f)
+        {
+            m_DebugPreviewPeelTimer = Mathf.Max(0f, m_DebugPreviewPeelTimer - Time.deltaTime);
+            m_CurrentCaptureTime = requiredCaptureDuration * 0.85f;
+            isPreviewingPeel = true;
+        }
+
+        bool effectivelyIlluminated = (m_IsIlluminatedThisFrame || isPreviewingPeel) && !m_IsCloakCaptureImmune;
 
         if (effectivelyIlluminated)
         {
-            m_CurrentGraceTimer = beamLossGracePeriod;
-            m_CurrentCaptureTime += Time.deltaTime;
+            if (m_CurrentCaptureTime <= 0.01f)
+            {
+                m_PeelingWindCheckTimer = 0f;
+            }
 
-            if (showDebugLogs && Time.frameCount % 20 == 0)
+            m_CurrentGraceTimer = beamLossGracePeriod;
+            if (!isPreviewingPeel)
+            {
+                m_CurrentCaptureTime += Time.deltaTime;
+            }
+
+            if (showDebugLogs && !isPreviewingPeel && Time.frameCount % 20 == 0)
             {
                 Debug.Log($"[{gameObject.name}] Capture Progress: {m_CurrentCaptureTime:F1}s / {requiredCaptureDuration:F1}s ({CurrentProgressNormalized * 100f:F0}%)");
             }
 
             UpdateVisualFeedback(true);
+            UpdatePeelingBuildUp(true);
             onCaptureProgress?.Invoke(CurrentProgressNormalized);
 
-            if (m_CurrentCaptureTime >= requiredCaptureDuration)
+            if (!isPreviewingPeel && m_CurrentCaptureTime >= requiredCaptureDuration)
             {
                 CaptureGhost();
             }
@@ -473,6 +539,7 @@ public class GhostTarget : MonoBehaviour
             }
 
             UpdateVisualFeedback(false);
+            UpdatePeelingBuildUp(false);
         }
 
         m_IsIlluminatedThisFrame = false;
@@ -536,6 +603,8 @@ public class GhostTarget : MonoBehaviour
             m_PropBlock.SetColor(s_RimColorId, captureFlashColor);
             m_PropBlock.SetFloat(s_RimIntensityId, 2.0f);
             m_PropBlock.SetColor(s_EmissionColorId, captureFlashColor * (0.85f + smoothT * 1.15f));
+            m_PropBlock.SetFloat(s_CaptureStrainId, (enablePeelingBuildUp && captureVanishStyle == CaptureVanishStyle.WindSweptDustDissolve) ? 1.0f : 0.0f);
+            m_PropBlock.SetColor(s_StrainCrackColorId, strainCrackColor);
 
             entry.Renderer.SetPropertyBlock(m_PropBlock);
         }
@@ -683,6 +752,10 @@ public class GhostTarget : MonoBehaviour
         m_IsCaptured = true;
         m_CurrentCaptureTime = requiredCaptureDuration;
         m_WallPhaseBlend = 0f;
+        m_DebugPreviewPeelTimer = 0f;
+
+        // Stop emitting new peeling motes so already-shed wake specks finish twinkling out seamlessly into the final burst!
+        StopPeelingVfx(clearImmediately: false);
 
         if (m_Collider != null)
         {
@@ -693,6 +766,7 @@ public class GhostTarget : MonoBehaviour
         int activeRound = ResolveActiveVfxRound();
         Debug.Log($"[{gameObject.name}] *** CAPTURED! *** (Round {activeRound} Soul-Dust VFX triggered)");
         PlayCaptureVFXForRound(activeRound);
+        m_HasActivePeelingWind = false;
         onGhostCaptured?.Invoke();
 
         m_ActiveCaptureVanishDuration = GetVanishDurationForRound(activeRound);
@@ -808,6 +882,316 @@ public class GhostTarget : MonoBehaviour
         }
 
         m_PooledCaptureVfxInstance.SetActive(false);
+    }
+
+    private void EnsurePeelingVfxPooled()
+    {
+        if (!enablePeelingBuildUp || peelingAshVfxPrefab == null)
+            return;
+
+        if (isTestDummy && !playParticlesOnTestDummies)
+            return;
+
+        if (m_PooledPeelingVfxInstance != null && m_PooledPeelingSourcePrefab == peelingAshVfxPrefab)
+            return;
+
+        if (m_PooledPeelingVfxInstance != null)
+        {
+            Destroy(m_PooledPeelingVfxInstance);
+            m_PooledPeelingVfxInstance = null;
+        }
+
+        if (s_VfxPoolContainer == null)
+        {
+            GameObject containerObj = new GameObject("GhostCaptureVFX_Pool");
+            s_VfxPoolContainer = containerObj.transform;
+        }
+
+        if (m_VfxPropBlock == null)
+        {
+            m_VfxPropBlock = new MaterialPropertyBlock();
+        }
+
+        m_PooledPeelingSourcePrefab = peelingAshVfxPrefab;
+        m_PooledPeelingVfxInstance = Instantiate(peelingAshVfxPrefab, s_VfxPoolContainer);
+        m_PooledPeelingVfxInstance.name = $"{gameObject.name}_PeelingAshVFX";
+        m_PooledPeelingSystems = m_PooledPeelingVfxInstance.GetComponentsInChildren<ParticleSystem>(true);
+        m_PooledPeelingBaselines = new PeelingLayerBaseline[m_PooledPeelingSystems.Length];
+
+        for (int i = 0; i < m_PooledPeelingSystems.Length; i++)
+        {
+            ParticleSystem ps = m_PooledPeelingSystems[i];
+            var main = ps.main;
+            main.scalingMode = ParticleSystemScalingMode.Hierarchy;
+            main.playOnAwake = false;
+
+            var emission = ps.emission;
+            float baseRate = emission.rateOverTime.mode == ParticleSystemCurveMode.TwoConstants
+                ? emission.rateOverTime.constantMax
+                : emission.rateOverTime.constant;
+            emission.rateOverTime = new ParticleSystem.MinMaxCurve(1.0f);
+            emission.rateOverTimeMultiplier = 0f;
+
+            ParticleSystemRenderer psr = ps.GetComponent<ParticleSystemRenderer>();
+            bool isSilk = false;
+            if (psr != null && psr.sharedMaterial != null && psr.sharedMaterial.HasProperty(s_DustModeId))
+            {
+                isSilk = psr.sharedMaterial.GetFloat(s_DustModeId) < 0.5f;
+            }
+
+            m_PooledPeelingBaselines[i] = new PeelingLayerBaseline
+            {
+                System = ps,
+                Renderer = psr,
+                BaseRateOverTime = Mathf.Max(4f, baseRate),
+                IsSilkWispLayer = isSilk
+            };
+
+            ps.Stop(withChildren: false, stopBehavior: ParticleSystemStopBehavior.StopEmittingAndClear);
+        }
+
+        m_IsPeelingVfxEmitting = false;
+        m_PooledPeelingVfxInstance.SetActive(false);
+    }
+
+    private void UpdatePeelingBuildUp(bool effectivelyIlluminated)
+    {
+        if (!Application.isPlaying)
+            return;
+
+        if (!enablePeelingBuildUp || peelingAshVfxPrefab == null || (isTestDummy && !playParticlesOnTestDummies))
+        {
+            StopPeelingVfx(clearImmediately: false);
+            TickStoppedPeelingCleanup();
+            return;
+        }
+
+        if (m_PooledPeelingVfxInstance == null || m_PooledPeelingSourcePrefab != peelingAshVfxPrefab)
+        {
+            EnsurePeelingVfxPooled();
+        }
+
+        if (m_PooledPeelingVfxInstance == null || m_IsCloakCaptureImmune || m_SpectralVisibility <= 0.08f)
+        {
+            StopPeelingVfx(clearImmediately: false);
+            TickStoppedPeelingCleanup();
+            return;
+        }
+
+        float progress = CurrentProgressNormalized;
+        float peelIntensity = 0f;
+        if (effectivelyIlluminated)
+        {
+            // Immediate Frame-1 tactile sparks (18%) escalating into a roaring pre-shatter torrent (100%)
+            peelIntensity = Mathf.Lerp(0.18f, 1.0f, progress * (0.35f + 0.65f * progress));
+        }
+        else if (m_CurrentCaptureTime > 0.02f)
+        {
+            peelIntensity = m_CurrentGraceTimer > 0f
+                ? (progress * 0.45f)
+                : (progress * progress * 0.28f);
+        }
+
+        if (peelIntensity <= 0.008f)
+        {
+            m_HasActivePeelingWind = false;
+            StopPeelingVfx(clearImmediately: false);
+            TickStoppedPeelingCleanup();
+            return;
+        }
+
+        Vector3 spawnPos = TargetCenter + Vector3.up * vfxHeightOffset;
+        Vector3 desiredWind = orientVfxAwayFromPlayer ? ComputeSmoothPeelingWindDirection(spawnPos) : Vector3.forward;
+        if (!m_HasActivePeelingWind)
+        {
+            m_CurrentPeelingWindDir = desiredWind;
+            m_HasActivePeelingWind = true;
+        }
+        else
+        {
+            m_CurrentPeelingWindDir = Vector3.Slerp(m_CurrentPeelingWindDir, desiredWind, Mathf.Clamp01(Time.deltaTime * 9.0f));
+            if (m_CurrentPeelingWindDir.sqrMagnitude > 0.0001f)
+                m_CurrentPeelingWindDir.Normalize();
+        }
+
+        m_PooledPeelingVfxInstance.transform.position = spawnPos;
+        m_PooledPeelingVfxInstance.transform.rotation = orientVfxAwayFromPlayer
+            ? Quaternion.LookRotation(m_CurrentPeelingWindDir, Vector3.up)
+            : Quaternion.identity;
+
+        int upcomingRound = PeekActiveVfxRound();
+        int finaleRound = RoundManager.Instance != null ? Mathf.Max(2, RoundManager.Instance.TotalRounds) : 6;
+        float roundRateMult = 1.0f;
+        float roundScaleMult = 1.0f;
+
+        if (scalePeelingWithRound && enableRoundVfxScaling)
+        {
+            if (upcomingRound >= finaleRound)
+            {
+                roundRateMult = 1.48f;
+                roundScaleMult = 1.25f;
+            }
+            else
+            {
+                float rt = Mathf.Clamp01((upcomingRound - 1) / (float)Mathf.Max(1, finaleRound - 2));
+                roundRateMult = Mathf.Lerp(0.65f, 1.22f, rt);
+                roundScaleMult = Mathf.Lerp(0.76f, 1.12f, rt);
+            }
+        }
+
+        float activeScale = Mathf.Max(0.25f, vfxScaleMultiplier * roundScaleMult);
+        m_PooledPeelingVfxInstance.transform.localScale = Vector3.one * activeScale;
+
+        if (!m_PooledPeelingVfxInstance.activeSelf)
+        {
+            m_PooledPeelingVfxInstance.SetActive(true);
+        }
+
+        float silkPhaseWeight = Mathf.SmoothStep(0.12f, 1.0f, progress);
+
+        for (int i = 0; i < m_PooledPeelingBaselines.Length; i++)
+        {
+            PeelingLayerBaseline pb = m_PooledPeelingBaselines[i];
+            if (pb.System == null)
+                continue;
+
+            float layerIntensity = pb.IsSilkWispLayer ? (peelIntensity * silkPhaseWeight) : peelIntensity;
+            var emission = pb.System.emission;
+            emission.rateOverTimeMultiplier = pb.BaseRateOverTime * layerIntensity * roundRateMult * peelingIntensityMultiplier;
+
+            if (pb.Renderer != null)
+            {
+                pb.Renderer.GetPropertyBlock(m_VfxPropBlock);
+                m_VfxPropBlock.SetFloat(s_CloudScaleFactorId, activeScale);
+                pb.Renderer.SetPropertyBlock(m_VfxPropBlock);
+            }
+
+            if (!pb.System.isPlaying)
+            {
+                pb.System.Play(withChildren: false);
+            }
+        }
+
+        m_IsPeelingVfxEmitting = true;
+    }
+
+    private Vector3 ComputeSmoothPeelingWindDirection(Vector3 spawnPos)
+    {
+        Vector3 awayDir = -transform.forward;
+        Camera mainCam = Camera.main;
+        if (mainCam != null)
+        {
+            Vector3 fromPlayer = spawnPos - mainCam.transform.position;
+            fromPlayer.y = 0f;
+            if (fromPlayer.sqrMagnitude > 0.001f)
+            {
+                awayDir = fromPlayer.normalized;
+            }
+        }
+
+        awayDir.y = 0f;
+        awayDir = awayDir.sqrMagnitude > 0.001f ? awayDir.normalized : Vector3.forward;
+
+        if (vfxCrosswindAngleDegrees <= 0.5f)
+            return awayDir;
+
+        m_PeelingWindCheckTimer -= Time.deltaTime;
+        if (m_PeelingWindCheckTimer <= 0f)
+        {
+            m_PeelingWindCheckTimer = 0.12f;
+            Vector3 rightSweep = Quaternion.Euler(0f, vfxCrosswindAngleDegrees, 0f) * awayDir;
+            Vector3 leftSweep = Quaternion.Euler(0f, -vfxCrosswindAngleDegrees, 0f) * awayDir;
+
+            float checkDist = 1.5f;
+            float rightClearance = Physics.Raycast(spawnPos, rightSweep, out RaycastHit hitRight, checkDist, ~0, QueryTriggerInteraction.Ignore)
+                ? hitRight.distance
+                : checkDist;
+            float leftClearance = Physics.Raycast(spawnPos, leftSweep, out RaycastHit hitLeft, checkDist, ~0, QueryTriggerInteraction.Ignore)
+                ? hitLeft.distance
+                : checkDist;
+
+            if (Mathf.Abs(rightClearance - leftClearance) > 0.18f)
+            {
+                m_PeelingCrosswindSign = rightClearance >= leftClearance ? 1f : -1f;
+            }
+            else if (!m_HasActivePeelingWind)
+            {
+                m_PeelingCrosswindSign = ((GetInstanceID() + Time.frameCount) & 1) == 0 ? 1f : -1f;
+            }
+        }
+
+        return Quaternion.Euler(0f, m_PeelingCrosswindSign * vfxCrosswindAngleDegrees, 0f) * awayDir;
+    }
+
+    private void StopPeelingVfx(bool clearImmediately)
+    {
+        if (m_PooledPeelingSystems == null)
+            return;
+
+        if (!m_IsPeelingVfxEmitting && !clearImmediately)
+            return;
+
+        ParticleSystemStopBehavior behavior = clearImmediately
+            ? ParticleSystemStopBehavior.StopEmittingAndClear
+            : ParticleSystemStopBehavior.StopEmitting;
+
+        for (int i = 0; i < m_PooledPeelingSystems.Length; i++)
+        {
+            ParticleSystem ps = m_PooledPeelingSystems[i];
+            if (ps == null)
+                continue;
+
+            var emission = ps.emission;
+            emission.rateOverTimeMultiplier = 0f;
+            if (ps.isPlaying || clearImmediately)
+            {
+                ps.Stop(withChildren: false, stopBehavior: behavior);
+            }
+        }
+
+        m_IsPeelingVfxEmitting = false;
+        if (clearImmediately && m_PooledPeelingVfxInstance != null && m_PooledPeelingVfxInstance.activeSelf)
+        {
+            m_PooledPeelingVfxInstance.SetActive(false);
+        }
+    }
+
+    private void TickStoppedPeelingCleanup()
+    {
+        if (m_IsPeelingVfxEmitting || m_PooledPeelingVfxInstance == null || !m_PooledPeelingVfxInstance.activeSelf)
+            return;
+
+        if (m_PooledPeelingSystems != null)
+        {
+            for (int i = 0; i < m_PooledPeelingSystems.Length; i++)
+            {
+                ParticleSystem ps = m_PooledPeelingSystems[i];
+                if (ps != null && ps.particleCount > 0)
+                    return;
+            }
+        }
+
+        m_PooledPeelingVfxInstance.SetActive(false);
+    }
+
+    private int PeekActiveVfxRound()
+    {
+        if (!enableRoundVfxScaling)
+            return 4;
+
+        if (vfxRoundTestOverride >= 1 && vfxRoundTestOverride <= 6)
+            return vfxRoundTestOverride;
+
+        if (isTestDummy && cycleRoundsOnTestDummies)
+            return s_NextDummyPreviewRound;
+
+        if (RoundManager.Instance != null)
+        {
+            int total = Mathf.Max(1, RoundManager.Instance.TotalRounds);
+            return Mathf.Clamp(RoundManager.Instance.CurrentRound, 1, total);
+        }
+
+        return 4;
     }
 
     private int ResolveActiveVfxRound()
@@ -1036,6 +1420,34 @@ public class GhostTarget : MonoBehaviour
         PlayCaptureVFXForRound(6);
     }
 
+    [ContextMenu("Preview 85% Peeling Overload (2.5s Test)")]
+    public void PreviewPeelingOverload()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning($"[{gameObject.name}] Enter Play Mode to preview the live 85% Peeling Soul-Ash & Surface Fracture overload!");
+            return;
+        }
+
+        if (m_IsCaptured)
+        {
+            ResetTarget();
+        }
+
+        m_IsCloakCaptureImmune = false;
+        m_SpectralVisibility = 1.0f;
+        m_DebugPreviewPeelTimer = 2.5f;
+        m_CurrentCaptureTime = requiredCaptureDuration * 0.85f;
+        UpdateRendererVisibilityToggle();
+        UpdateVisualFeedback(true);
+        UpdatePeelingBuildUp(true);
+
+        if (showDebugLogs)
+        {
+            Debug.Log($"[{gameObject.name}] Previewing 85% Peeling Soul-Ash & Surface Fracture Overload for 2.5s!");
+        }
+    }
+
     public void PlayCaptureVFXForRound(int roundNumber)
     {
         if (!Application.isPlaying || !enableCaptureParticles || captureVfxPrefab == null)
@@ -1049,7 +1461,17 @@ public class GhostTarget : MonoBehaviour
             return;
 
         Vector3 spawnPos = TargetCenter + Vector3.up * vfxHeightOffset;
-        m_LastVfxWindDirection = orientVfxAwayFromPlayer ? ComputeVfxWindDirection(spawnPos) : Vector3.forward;
+        if (orientVfxAwayFromPlayer)
+        {
+            // Seamlessly inherit the live 0s-3s peeling wind direction so the 3.0s burst continues along the exact same vector!
+            m_LastVfxWindDirection = (m_HasActivePeelingWind && m_CurrentPeelingWindDir.sqrMagnitude > 0.001f)
+                ? m_CurrentPeelingWindDir
+                : ComputeVfxWindDirection(spawnPos);
+        }
+        else
+        {
+            m_LastVfxWindDirection = Vector3.forward;
+        }
 
         m_PooledCaptureVfxInstance.transform.position = spawnPos;
         m_PooledCaptureVfxInstance.transform.rotation = orientVfxAwayFromPlayer
@@ -1095,6 +1517,10 @@ public class GhostTarget : MonoBehaviour
         m_IsCloakCaptureImmune = false;
         m_IsIlluminatedThisFrame = false;
         m_IsUVIlluminatedThisFrame = false;
+        m_DebugPreviewPeelTimer = 0f;
+        m_HasActivePeelingWind = false;
+
+        StopPeelingVfx(clearImmediately: false);
 
         transform.localScale = m_RestingScale;
 
@@ -1147,9 +1573,14 @@ public class GhostTarget : MonoBehaviour
         if (!m_IsCloakCaptureImmune && progress > 0.02f)
         {
             float rimWeight = illuminated ? progress : (progress * 0.75f);
-            activeRimColor = Color.Lerp(activeRimColor, progressColor, rimWeight);
-            activeRimIntensity = Mathf.Max(activeRimIntensity, rimWeight * 1.6f);
+            Color overchargeRim = Color.Lerp(progressColor, strainCrackColor, progress * 0.65f);
+            activeRimColor = Color.Lerp(activeRimColor, overchargeRim, rimWeight);
+            activeRimIntensity = Mathf.Max(activeRimIntensity, rimWeight * 1.85f);
         }
+
+        float strain = (!m_IsCloakCaptureImmune && enablePeelingBuildUp && progress > 0.01f)
+            ? (illuminated ? progress : progress * 0.85f)
+            : 0f;
 
         // Spectral color language: Blue when exposed & visible without UV, Purple when cloaked & revealed by UV (0 on GhostDummies)
         float spectralTintStrength = Mathf.Clamp01(m_CustomRimIntensity * 0.38f);
@@ -1188,14 +1619,17 @@ public class GhostTarget : MonoBehaviour
             m_PropBlock.SetColor(s_DissolveEdgeColorId, dissolveEdgeColor);
             m_PropBlock.SetColor(s_RimColorId, activeRimColor);
             m_PropBlock.SetFloat(s_RimIntensityId, activeRimIntensity);
+            m_PropBlock.SetFloat(s_CaptureStrainId, strain);
+            m_PropBlock.SetColor(s_StrainCrackColorId, strainCrackColor);
 
             if (m_WallPhaseBlend > 0.01f)
             {
                 m_PropBlock.SetColor(s_EmissionColorId, wallPhaseColor * (m_WallPhaseBlend * 0.55f));
             }
-            else if (!m_IsCloakCaptureImmune && illuminated && progress > 0.1f)
+            else if (!m_IsCloakCaptureImmune && illuminated && progress > 0.08f)
             {
-                m_PropBlock.SetColor(s_EmissionColorId, progressColor * (progress * 0.5f));
+                // Restrained body glow so the incandescent silver-white 3D fracture veins pop with high contrast!
+                m_PropBlock.SetColor(s_EmissionColorId, progressColor * (progress * 0.15f));
             }
             else if (m_CustomRimIntensity > 0.05f)
             {

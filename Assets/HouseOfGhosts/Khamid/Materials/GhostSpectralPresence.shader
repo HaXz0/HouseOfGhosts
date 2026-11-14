@@ -20,6 +20,10 @@ Shader "HouseOfGhosts/GhostSpectralPresence"
         _RimPower ("Fresnel Rim Sharpness", Range(0.8, 6.0)) = 2.6
         _RimIntensity ("Fresnel Rim Intensity", Range(0.0, 3.0)) = 0.0
         [HDR] _EmissionColor ("Emission Color", Color) = (0, 0, 0, 0)
+
+        [Header(Stage 2D Beam Lock Fracture and Flaking)]
+        _CaptureStrain ("Capture Destabilization Strain (0-1)", Range(0.0, 1.0)) = 0.0
+        [HDR] _StrainCrackColor ("Strain Fracture Glow", Color) = (0.96, 0.99, 1.0, 1.0)
     }
 
     SubShader
@@ -73,6 +77,8 @@ Shader "HouseOfGhosts/GhostSpectralPresence"
                 float _RimPower;
                 float _RimIntensity;
                 half4 _EmissionColor;
+                float _CaptureStrain;
+                half4 _StrainCrackColor;
             CBUFFER_END
 
             struct Attributes
@@ -225,6 +231,79 @@ Shader "HouseOfGhosts/GhostSpectralPresence"
                 float fresnel = pow(1.0 - ndotv, _RimPower) * _RimIntensity;
                 half3 rimEmission = _RimColor.rgb * (half)fresnel;
 
+                // Stage 2D: 0s -> 3s Beam-Lock 3D Soul-Fracture Veins & Grazing Rim Flaking
+                half3 strainEmission = half3(0, 0, 0);
+                if (_CaptureStrain > 0.015 && _WipeMode < 1.5)
+                {
+                    float strain = saturate(_CaptureStrain);
+                    float tFlow = _Time.y;
+
+                    // Multi-octave tilted 3D fractal zero-crossing (true jagged diagonal lightning/porcelain fissures, zero cubic grid loops!)
+                    float3 q0 = input.positionOS * float3(4.6, 3.4, 4.6) + float3(0.0, -tFlow * 0.28, 0.0);
+                    float3 p1 = float3(
+                        q0.x * 0.80 + q0.y * 0.36 - q0.z * 0.48,
+                        -q0.x * 0.44 + q0.y * 0.88 + q0.z * 0.18,
+                        q0.x * 0.41 - q0.y * 0.31 + q0.z * 0.86
+                    );
+                    float3 p2 = float3(
+                        p1.x * 0.64 - p1.z * 0.77,
+                        p1.y * 1.08 + p1.x * 0.42 - tFlow * 0.35,
+                        p1.x * 0.77 + p1.z * 0.64
+                    ) * 2.15 + float3(5.3, 2.7, 8.1);
+                    float3 p3 = float3(
+                        p2.z * 0.72 + p2.y * 0.69,
+                        p2.y * 0.72 - p2.z * 0.69 - tFlow * 0.45,
+                        p2.x * 1.04
+                    ) * 2.10 + float3(11.4, 6.9, 3.2);
+
+                    float n1 = OrganicNoise3D(p1) - 0.5;
+                    float n2 = OrganicNoise3D(p2) - 0.5;
+                    float n3 = OrganicNoise3D(p3) - 0.5;
+
+                    // Primary jagged diagonal fissure + secondary cross-branching fracture forks
+                    float fbmPrimary = n1 + n2 * 0.56 + n3 * 0.30;
+                    float fbmBranch  = (n2 * 0.85 - n1 * 0.42) + n3 * 0.48;
+
+                    float ridgeA = saturate(1.0 - abs(fbmPrimary) * 3.6);
+                    float ridgeB = saturate(1.0 - abs(fbmBranch) * 4.2);
+
+                    float revealMask = smoothstep(0.04, 0.22, strain);
+
+                    // Razor-sharp glowing silver-white veins framed by a subtle dark spectral fissure recess
+                    float seamBand = pow(ridgeA, lerp(5.0, 2.6, strain)) * revealMask;
+                    float primaryCore = pow(ridgeA, lerp(13.0, 6.5, strain));
+                    float branchCore = pow(ridgeB, lerp(14.0, 7.2, strain)) * saturate(ridgeA * 1.6 + strain * 0.45);
+                    float glowingCore = saturate(primaryCore * 1.45 + branchCore * 1.05) * revealMask;
+
+                    float borderDarken = saturate(seamBand - glowingCore * 1.35) * (0.26 + 0.42 * strain);
+                    baseAlbedo *= (half)(1.0 - borderDarken);
+
+                    float pulse = 0.88 + 0.12 * sin(tFlow * (6.0 + strain * 10.0) + n1 * 9.0);
+                    float veinIntensity = glowingCore * (0.80 + strain * 2.05) * pulse;
+
+                    // Above 52% strain: fine-grain silhouette rim physically crumbles open via AlphaToMask!
+                    float rimFlakeGlow = 0.0;
+                    if (strain > 0.52)
+                    {
+                        float flakePhase = saturate((strain - 0.52) / 0.48);
+                        float grazingMask = pow(1.0 - ndotv, 1.75);
+                        float flakeThreshold = flakePhase * grazingMask * 0.84;
+
+                        float fineGrain = OrganicNoise3D(input.positionOS * 24.0 + float3(0.0, -tFlow * 1.4, 0.0));
+                        float flakeField = saturate(fineGrain * 0.62 + (n3 + 0.5) * 0.26 + (1.0 - ridgeA) * 0.12);
+
+                        if (flakeField < flakeThreshold)
+                        {
+                            discard;
+                        }
+
+                        float tearEdge = 1.0 - saturate((flakeField - flakeThreshold) / 0.12);
+                        rimFlakeGlow = tearEdge * tearEdge * flakePhase * grazingMask * 2.6;
+                    }
+
+                    strainEmission = _StrainCrackColor.rgb * (half)(veinIntensity + rimFlakeGlow);
+                }
+
                 InputData inputData = (InputData)0;
                 inputData.positionWS = input.positionWS;
                 inputData.positionCS = input.positionCS;
@@ -242,7 +321,7 @@ Shader "HouseOfGhosts/GhostSpectralPresence"
                 surfaceData.metallic = 0.0h;
                 surfaceData.smoothness = _Smoothness;
                 surfaceData.normalTS = half3(0, 0, 1);
-                surfaceData.emission = _EmissionColor.rgb + frontierEmission + rimEmission;
+                surfaceData.emission = _EmissionColor.rgb + frontierEmission + rimEmission + strainEmission;
                 surfaceData.occlusion = 1.0h;
                 surfaceData.alpha = alphaCoverage;
 
