@@ -827,18 +827,8 @@ MonoBehaviour:
   features:
   - {fileID: 8736661028334727731}
   - {fileID: 3598254934845347770}
-  - {fileID: 2807344082565100727}
-  - {fileID: 8480769217326736990}
   - {fileID: 1170704673688743257}
-  - {fileID: -4352138005575186322}
-  - {fileID: -2704800931075271787}
-  - {fileID: -7169320004640807097}
   - {fileID: 5153017048313567732}
-  - {fileID: -7920890622242903672}
-  - {fileID: -2487464772120170639}
-  - {fileID: 8579781608529860403}
-  - {fileID: -4006158474501928448}
-  - {fileID: -6756582991778154395}
   - {fileID: -8705318006256794946}
   - {fileID: 6481653220666705815}
   - {fileID: 7393116930172532905}
@@ -1800,7 +1790,7 @@ MonoBehaviour:
   - {fileID: -671281728444007487}
   - {fileID: 2051105749830685677}
   - {fileID: 8143082234117167668}
-  - {fileID: 8202813682430573535}
+  - {fileID: 8480769217326736990}
   - {fileID: 8980318060753866109}
   - {fileID: -6559185765804338520}
   - {fileID: -4756202077021157709}
@@ -2180,7 +2170,7 @@ MonoBehaviour:
   nameUi: 'Android XR: AR Anchor'
   version: 0.1.0
   featureIdInternal: com.unity.openxr.feature.arfoundation-androidxr-anchor
-  openxrExtensionStrings: XR_ANDROID_trackables
+  openxrExtensionStrings: XR_ANDROID_trackables XR_ANDROID_device_anchor_persistence
   company: Unity Technologies
   priority: 0
   targetOpenXRApiVersion: 
@@ -3424,7 +3414,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 90ae1e8c3c7a542bba339faf2e771c5a, type: 3}
-  m_Name: AndroidXRSupportFeature Standalone
+  m_Name: AndroidXRSupportFeature Android
   m_EditorClassIdentifier: Unity.XR.AndroidOpenXR::UnityEngine.XR.OpenXR.Features.Android.AndroidXRSupportFeature
   m_enabled: 0
   nameUi: Android XR Support
@@ -3522,7 +3512,7 @@ MonoBehaviour:
   nameUi: 'Android XR: AR Anchor'
   version: 0.1.0
   featureIdInternal: com.unity.openxr.feature.arfoundation-androidxr-anchor
-  openxrExtensionStrings: XR_ANDROID_trackables
+  openxrExtensionStrings: XR_ANDROID_trackables XR_ANDROID_device_anchor_persistence
   company: Unity Technologies
   priority: 0
   targetOpenXRApiVersion: 
