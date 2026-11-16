@@ -75,19 +75,24 @@ Shader "HouseOfGhosts/FlashlightDustMote"
                 // Fallback to vertex world position if custom particle center stream isn't active
                 float3 samplePosWS = (dot(input.centerWS, input.centerWS) > 0.0001) ? input.centerWS : posWS;
 
-                float3 toMote = samplePosWS - _BeamOriginWS.xyz;
-                float dist = length(toMote);
-                float3 dirToMote = toMote / max(0.0001, dist);
                 float3 beamDir = normalize(_BeamDirWS.xyz);
+                float3 relFromLens = samplePosWS - _BeamOriginWS.xyz;
+                float alongBeam = dot(relFromLens, beamDir);
 
-                float cosAngle = dot(dirToMote, beamDir);
+                // Shift virtual cone apex ~7.5 cm inside the reflector cup so the cone right at the glass matches
+                // the physical ZaklampLens width instead of pinching to a 0 mm point!
+                float3 coneApexWS = _BeamOriginWS.xyz - beamDir * 0.075;
+                float3 fromApex = samplePosWS - coneApexWS;
+                float apexDist = length(fromApex);
+                float cosAngle = dot(fromApex / max(0.0001, apexDist), beamDir);
                 float coneMask = smoothstep(_BeamParams.x, _BeamParams.y, cosAngle);
 
                 float wallStop = max(0.15, _BeamParams.z);
                 float maxRange = max(0.50, _BeamParams.w);
-                float nearLensFade = smoothstep(0.06, 0.24, dist);
-                float wallMask = smoothstep(wallStop + 0.02, max(0.08, wallStop - 0.22), dist);
-                float distFalloff = 1.0 - saturate(dist / maxRange) * 0.72;
+                // Strictly 0 behind/inside the lens (<= 4.5 cm), fading in smoothly right where light exits the glass (5-14 cm)!
+                float nearLensFade = smoothstep(0.045, 0.14, alongBeam);
+                float wallMask = smoothstep(wallStop + 0.02, max(0.08, wallStop - 0.22), alongBeam);
+                float distFalloff = 1.0 - saturate(alongBeam / maxRange) * 0.72;
 
                 float twinkle = 0.72 + 0.28 * sin(_Time.y * 3.4 + input.uvAndRand.z * 31.4159);
                 float beamIllum = coneMask * nearLensFade * wallMask * distFalloff * twinkle;
@@ -102,7 +107,7 @@ Shader "HouseOfGhosts/FlashlightDustMote"
                 output.positionCS = TransformWorldToHClip(posWS);
                 output.color = input.color;
                 output.uv = input.uvAndRand.xy;
-                output.beamData = float2(beamIllum, smoothstep(0.75, 0.16, dist));
+                output.beamData = float2(beamIllum, smoothstep(0.65, 0.12, alongBeam));
                 return output;
             }
 

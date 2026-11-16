@@ -744,6 +744,8 @@ MonoBehaviour:
   isPhasingThroughWall: 0
   isCloakedWhileFleeing: 0
   isPerformingCornerCut: 0
+  isBlindSpotStalking: 0
+  isFrozenInBlindSpotStare: 0
   currentSpectralVisibility: 0
   cloakWhileHidden: 1
   materializeDuration: 0.45
@@ -812,6 +814,7 @@ MonoBehaviour:
   phaseShimmerFrequency: 16
   leaveUVTraceTrail: 1
   traceStepSpacing: 1
+  footprintSize: {x: 0.15, y: 0.24}
   traceLifetimeSeconds: 25
   visibleStateTraceUVColor: {r: 0.16, g: 0.72, b: 1, a: 1}
   invisibleStateTraceUVColor: {r: 0.62, g: 0.22, b: 1, a: 1}
@@ -839,6 +842,13 @@ MonoBehaviour:
   stalkStopDistance: 3
   stalkSpottedViewAngle: 42
   maxStalkDurationSeconds: 10
+  enableBlindSpotStalking: 1
+  blindSpotStalkChance: 0.35
+  blindSpotCreepSpeed: 1.65
+  blindSpotBehindDistance: 1.85
+  blindSpotFlankArcRadius: 3.1
+  blindSpotFreezeStareDuration: 0.6
+  maxBlindSpotStalkDuration: 13
   hintFlickerDuration: 1.6
   hintBreadcrumbCount: 4
   triggerProximityDistance: 2.5
@@ -5483,6 +5493,7 @@ MonoBehaviour:
   dustMotesMaterial: {fileID: 2100000, guid: 7a31a2f1a7ccaaa4f875862885f812c9, type: 2}
   normalDustMoteColor: {r: 1, g: 0.94, b: 0.8, a: 0.82}
   uvDustMoteColor: {r: 0.74, g: 0.38, b: 1, a: 0.95}
+  dustNearLensOffset: 0.08
   drawDebugGizmos: 1
 --- !u!114 &1217290892
 MonoBehaviour:

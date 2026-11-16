@@ -245,6 +245,69 @@ Shader "HouseOfGhosts/UVGhostTrace"
                 outPressureCore = max(tipCore * 0.95, proxCore) * contactMask;
             }
 
+            // Evaluates one anatomical child toe (teardrop proximal stem + plump distal cushion + chalky blacklight pressure core)
+            void EvaluateChildToePad(
+                float2 f,
+                float2 basePos,
+                float2 tipPos,
+                float stemRadius,
+                float padRadius,
+                float edgeWarp,
+                float fineGrain,
+                out float outFill,
+                out float outCore,
+                out float outScuff)
+            {
+                outFill = 0.0;
+                outCore = 0.0;
+                outScuff = 0.0;
+
+                float2 seg = tipPos - basePos;
+                float segLen = max(length(seg), 0.0001);
+                float2 dir = seg / segLen;
+                float2 perp = float2(-dir.y, dir.x);
+
+                // Bounding box early-out
+                float2 mid = 0.5 * (basePos + tipPos);
+                if (length(f - mid) > segLen * 0.9 + padRadius * 2.4)
+                {
+                    return;
+                }
+
+                // Soft proximal toe stem tapering into plump oval distal pad
+                float dStem = CapsuleSDF2D(f, basePos, tipPos, stemRadius, padRadius * 0.90);
+
+                float2 toTip = f - tipPos;
+                float tipX = dot(toTip, perp);
+                float tipY = dot(toTip, dir);
+                float rTipX = padRadius * 0.98;
+                float rTipY = padRadius * 1.18;
+                float dPad = (length(float2(tipX / rTipX, tipY / rTipY)) - 1.0) * min(rTipX, rTipY);
+
+                float dToe = SmoothMinSDF(dStem, dPad, 0.028) + edgeWarp * 0.011;
+                float contact = smoothstep(0.010, -0.036, dToe);
+
+                // Natural toe-joint skin fold dip between stem and distal pad + soft sulcus fade at base
+                float t = dot(f - basePos, dir) / segLen;
+                float jointLine = abs(t - 0.34 + edgeWarp * 0.06);
+                float jointDip = smoothstep(0.16, 0.02, jointLine);
+                float sulcusFade = smoothstep(-0.15, 0.28, t);
+                contact *= (1.0 - jointDip * 0.42) * sulcusFade;
+
+                // Subtle warped skin-ridge micro-texture (no bullseye target rings!)
+                float ridgeWave = 0.94 + 0.06 * sin((tipY * 1.2 + edgeWarp * 0.045) * 210.0 + fineGrain * 2.5);
+                contact *= ridgeWave;
+
+                outFill = contact;
+                outCore = smoothstep(0.92, 0.16, length(float2(tipX / rTipX, tipY / rTipY))) * contact;
+
+                // Subtle backward push-off smear under toe pad
+                float2 scuffRel = (f + float2(0.0, 0.065)) - tipPos;
+                float scuffX = dot(scuffRel, perp) / (rTipX * 0.88);
+                float scuffY = dot(scuffRel, dir) / (rTipY * 1.55);
+                outScuff = smoothstep(1.0, 0.18, length(float2(scuffX, scuffY))) * 0.24;
+            }
+
             half4 frag(Varyings input) : SV_Target
             {
                 UNITY_SETUP_INSTANCE_ID(input);
@@ -261,19 +324,116 @@ Shader "HouseOfGhosts/UVGhostTrace"
 
                 if (_TraceShape < 0.5)
                 {
-                    // Shape 0: Floor Footprint (oval sole + heel)
-                    float2 footUV = centered;
-                    footUV.x *= 1.35;
+                    // Shape 0: Creepy Child Barefoot 5-Toe UV Footprint (Latent Blacklight Skin-Residue Style)
+                    // (_TraceSeed >= 0 = Right Barefoot [Big Toe & inner arch on -X], _TraceSeed < 0 = Left Barefoot [Big Toe & inner arch on +X])
+                    float aspect = clamp(_QuadAspect, 1.15, 2.05);
+                    float footSign = (_TraceSeed < 0.0) ? -1.0 : 1.0;
+                    float seedVal = abs(_TraceSeed);
+                    float sPhase = seedVal * 2.93 + 0.65;
+                    float toeSplay = (frac(seedVal * 1.61 + 0.17) - 0.5) * 0.030;
 
-                    float soleDist = length(footUV - float2(0.0, 0.22));
-                    float heelDist = length((footUV - float2(0.0, -0.42)) * float2(1.25, 1.4));
+                    // Isotropic canonical child barefoot space
+                    float2 f = float2(centered.x * footSign, centered.y * aspect - 0.02);
+                    float edgeWarp = HandOrganicNoise(f * 1.25, sPhase);
+                    float fineGrain = HandOrganicNoise(f * 3.8 + float2(-1.9, 2.4), sPhase * 1.8);
+                    float chalkPatch = ValueNoise2D(f * 5.2 + float2(sPhase, -sPhase * 0.7)) - 0.5;
 
-                    float soleMask = smoothstep(0.62, 0.2, soleDist);
-                    float heelMask = smoothstep(0.48, 0.15, heelDist);
-                    float proceduralFootprint = saturate(soleMask + heelMask);
+                    // 1. Plump Child Barefoot Sole Cushions:
+                    // Rounded Big-Toe Ball + Smooth Sweeping Arch Transition + Lateral Bridge + Oval Heel
+                    float dMedialBallBelly = CapsuleSDF2D(f, float2(-0.21, 0.34), float2(0.05, 0.05), 0.246, 0.195);
+                    float dCentralBall = CapsuleSDF2D(f, float2(-0.20, 0.34), float2(0.03, 0.29), 0.246, 0.236);
+                    float dOuterBall = CapsuleSDF2D(f, float2(0.03, 0.29), float2(0.24, 0.15), 0.236, 0.198);
+                    float dLateralUpper = CapsuleSDF2D(f, float2(0.21, 0.14), float2(0.20, -0.32), 0.186, 0.172);
+                    float dLateralLower = CapsuleSDF2D(f, float2(0.20, -0.32), float2(0.06, -0.74), 0.172, 0.230);
+                    float dHeel = CapsuleSDF2D(f, float2(0.02, -0.66), float2(-0.02, -0.90), 0.245, 0.262);
 
-                    edgeBoost = smoothstep(0.65, 0.45, min(soleDist, heelDist)) * 0.5;
-                    shapeMask = saturate(proceduralFootprint + edgeBoost);
+                    float dSole = SmoothMinSDF(dMedialBallBelly, dCentralBall, 0.12);
+                    dSole = SmoothMinSDF(dSole, dOuterBall, 0.11);
+                    dSole = SmoothMinSDF(dSole, dLateralUpper, 0.15);
+                    dSole = SmoothMinSDF(dSole, dLateralLower, 0.14);
+                    dSole = SmoothMinSDF(dSole, dHeel, 0.15) + edgeWarp * 0.020;
+
+                    // Sweeping anatomical medial arch fade on inner (-X) midfoot
+                    float2 archOffset = f - float2(-0.26, -0.19);
+                    float2 archRot = float2(archOffset.x * 0.98 + archOffset.y * 0.20, -archOffset.x * 0.20 + archOffset.y * 0.98);
+                    float medialArchLift = smoothstep(1.18, 0.24, length(archRot / float2(0.29, 0.40)) + edgeWarp * 0.15);
+
+                    // Subtle diagonal plantar skin-fold creases in midfoot arch
+                    float crease1Dist = abs((f.y + 0.03) - (f.x + 0.10) * 0.34 + edgeWarp * 0.022);
+                    float soleCrease1 = smoothstep(0.018, 0.002, crease1Dist) * smoothstep(0.26, 0.02, abs(f.x - 0.06));
+                    float crease2Dist = abs((f.y + 0.22) + (f.x - 0.02) * 0.22 + edgeWarp * 0.020);
+                    float soleCrease2 = smoothstep(0.015, 0.002, crease2Dist) * smoothstep(0.22, 0.03, abs(f.x - 0.10));
+
+                    float soleFill = smoothstep(0.014, -0.088, dSole);
+                    soleFill *= (1.0 - medialArchLift * 0.78) * (1.0 - saturate(soleCrease1 + soleCrease2) * 0.32);
+
+                    // Natural weight-bearing pressure cores: Hallux Ball, Outer Metatarsal Head, and Heel Pad
+                    float dForefoot = SmoothMinSDF(SmoothMinSDF(dMedialBallBelly, dCentralBall, 0.09), dOuterBall, 0.09);
+                    float ballCore = smoothstep(-0.035, -0.155, dForefoot) * (1.0 - medialArchLift * 0.88);
+                    float heelCore = smoothstep(-0.035, -0.160, dHeel);
+                    float soleCore = max(ballCore, heelCore);
+
+                    // Faint heel-strike smudge behind heel
+                    float dHeelSmudge = CapsuleSDF2D(f + float2(0.0, 0.10), float2(0.01, -0.82), float2(-0.02, -0.94), 0.21, 0.18) + edgeWarp * 0.024;
+                    float heelSmudge = smoothstep(0.015, -0.068, dHeelSmudge) * 0.24;
+
+                    // 2. Five Teardrop Child Toes Snug Above the Curved Forefoot Sulcus
+                    float t1Fill, t1Core, t1Scuff;
+                    EvaluateChildToePad(
+                        f,
+                        float2(-0.25 - toeSplay * 0.4, 0.65),
+                        float2(-0.27 - toeSplay * 0.5, 0.82),
+                        0.082, 0.128, edgeWarp, fineGrain, t1Fill, t1Core, t1Scuff);
+
+                    float t2Fill, t2Core, t2Scuff;
+                    EvaluateChildToePad(
+                        f,
+                        float2(-0.05, 0.69),
+                        float2(-0.04, 0.84),
+                        0.048, 0.078, edgeWarp, fineGrain, t2Fill, t2Core, t2Scuff);
+
+                    float t3Fill, t3Core, t3Scuff;
+                    EvaluateChildToePad(
+                        f,
+                        float2(0.11 + toeSplay * 0.3, 0.63),
+                        float2(0.13 + toeSplay * 0.4, 0.77),
+                        0.045, 0.074, edgeWarp, fineGrain, t3Fill, t3Core, t3Scuff);
+
+                    float t4Fill, t4Core, t4Scuff;
+                    EvaluateChildToePad(
+                        f,
+                        float2(0.25 + toeSplay * 0.6, 0.52),
+                        float2(0.28 + toeSplay * 0.7, 0.65),
+                        0.042, 0.068, edgeWarp, fineGrain, t4Fill, t4Core, t4Scuff);
+
+                    float t5Fill, t5Core, t5Scuff;
+                    EvaluateChildToePad(
+                        f,
+                        float2(0.36 + toeSplay * 0.8, 0.38),
+                        float2(0.40 + toeSplay, 0.49),
+                        0.038, 0.062, edgeWarp, fineGrain, t5Fill, t5Core, t5Scuff);
+
+                    float toesFill = max(t1Fill, max(max(t2Fill, t3Fill), max(t4Fill, t5Fill)));
+                    float toesCore = max(t1Core * 1.06, max(max(t2Core, t3Core), max(t4Core, t5Core)));
+                    float toesScuff = max(t1Scuff, max(max(t2Scuff, t3Scuff), max(t4Scuff, t5Scuff)));
+
+                    // 3. Curved Plantar Micro-Ridges + Chalky Blacklight Skin-Oil Mottle (no horizontal scanlines!)
+                    float curvedArchPhase = (f.y + 0.14 * f.x * f.x) * 185.0 + edgeWarp * 5.2;
+                    float soleRidges = 0.95 + 0.05 * sin(curvedArchPhase);
+                    float dustyMottle = saturate(0.80 + 0.24 * fineGrain + 0.14 * edgeWarp + 0.16 * chalkPatch);
+                    float residueTex = soleRidges * dustyMottle;
+
+                    float scuffNoise = saturate(0.50 + 0.50 * ValueNoise2D(float2(f.x * 24.0 + sPhase, f.y * 3.8)));
+                    float totalScuff = max(heelSmudge, toesScuff) * scuffNoise;
+
+                    float rawFootContact = max(soleFill * 0.95, toesFill);
+                    float pressureGlow = max(soleCore * 0.86, toesCore * 1.12) * dustyMottle;
+
+                    float quadFade = smoothstep(0.99, 0.88, max(abs(centered.x), abs(centered.y)));
+                    float shimmer = 0.95 + 0.05 * sin(_Time.y * 2.5 + f.y * 4.5);
+
+                    edgeBoost = saturate(pressureGlow * 1.12) * shimmer * quadFade;
+                    shapeMask = saturate(max(rawFootContact * residueTex, totalScuff) + edgeBoost * 0.22) * shimmer * quadFade;
                 }
                 else if (_TraceShape < 1.5)
                 {

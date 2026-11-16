@@ -64,6 +64,10 @@ public class FlashlightCaptureDetector : MonoBehaviour
     [Tooltip("Fluorescent blacklight violet dust/spore mote tint in UV Mode.")]
     [SerializeField] private Color uvDustMoteColor = new Color(0.74f, 0.38f, 1.0f, 0.95f);
 
+    [Tooltip("Distance (meters) in front of the flashlight glass lens where floating dust particles begin appearing (0.08 = 8 cm off the glass).")]
+    [Range(0.02f, 0.60f)]
+    [SerializeField] private float dustNearLensOffset = 0.08f;
+
     [Header("Debug")]
     [SerializeField] private bool drawDebugGizmos = true;
 
@@ -79,6 +83,7 @@ public class FlashlightCaptureDetector : MonoBehaviour
     private ParticleSystem m_DustMotesInstance;
     private ParticleSystemRenderer m_DustMotesRenderer;
     private MaterialPropertyBlock m_DustPropBlock;
+    private float m_DustHalfLengthZ = 1.60f;
     private float m_SmoothedBeamReach = 8.0f;
     private float m_UvVisualBlend = 0f;
     private bool m_AtmosphereInitialized = false;
@@ -462,6 +467,15 @@ public class FlashlightCaptureDetector : MonoBehaviour
 
         if (m_DustMotesInstance != null)
         {
+            float shapeLengthZ = m_DustMotesInstance.shape.scale.z;
+            if (shapeLengthZ > 0.2f)
+            {
+                m_DustHalfLengthZ = shapeLengthZ * 0.5f;
+            }
+
+            m_DustMotesInstance.transform.localPosition = new Vector3(0f, 0f, dustNearLensOffset + m_DustHalfLengthZ);
+            m_DustMotesInstance.transform.localRotation = Quaternion.identity;
+
             m_DustMotesRenderer = m_DustMotesInstance.GetComponent<ParticleSystemRenderer>();
             if (m_DustMotesRenderer != null)
             {
@@ -494,6 +508,7 @@ public class FlashlightCaptureDetector : MonoBehaviour
                 m_DustMotesRenderer.enabled = false;
             }
 
+            m_DustMotesInstance.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             m_DustMotesInstance.Play(true);
             m_DustMotesInstance.Pause(true);
         }
@@ -564,10 +579,12 @@ public class FlashlightCaptureDetector : MonoBehaviour
             m_VolumetricConeRenderer.SetPropertyBlock(m_ConePropBlock);
         }
 
-        // 4. Push Cone-Masked Dust Motes PropertyBlock & Keep Spawn Volume Centered Ahead of Beam
+        // 4. Push Cone-Masked Dust Motes PropertyBlock & Keep Spawn Volume Starting Just Outside the Glass Lens
         if (enableFloatingDustMotes && m_DustMotesRenderer != null && m_DustMotesInstance != null)
         {
-            float boxCenterZ = Mathf.Clamp(m_SmoothedBeamReach * 0.48f, 0.55f, 2.15f);
+            float maxCenterZ = dustNearLensOffset + m_DustHalfLengthZ;
+            float minCenterZ = Mathf.Min(maxCenterZ, Mathf.Max(0.95f, m_DustHalfLengthZ * 0.72f));
+            float boxCenterZ = Mathf.Clamp(dustNearLensOffset + m_SmoothedBeamReach * 0.45f, minCenterZ, maxCenterZ);
             m_DustMotesInstance.transform.localPosition = new Vector3(0f, 0f, boxCenterZ);
             m_DustMotesInstance.transform.localRotation = Quaternion.identity;
 

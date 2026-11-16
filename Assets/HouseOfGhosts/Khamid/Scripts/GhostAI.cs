@@ -45,6 +45,8 @@ public class GhostAI : MonoBehaviour
     [SerializeField] private bool isPhasingThroughWall = false;
     [SerializeField] private bool isCloakedWhileFleeing = false;
     [SerializeField] private bool isPerformingCornerCut = false;
+    [SerializeField] private bool isBlindSpotStalking = false;
+    [SerializeField] private bool isFrozenInBlindSpotStare = false;
     [SerializeField] private float currentSpectralVisibility = 0f;
 
     [Header("Stage 1: Cloak & Supernatural Materialization")]
@@ -279,6 +281,9 @@ public class GhostAI : MonoBehaviour
     [Tooltip("Distance (meters) traveled between each dropped UV footprint trace.")]
     [SerializeField] private float traceStepSpacing = 1.0f;
 
+    [Tooltip("Width and length (meters) of the child-sized 5-toe barefoot UV footprint (~0.15m x 0.24m).")]
+    [SerializeField] private Vector2 footprintSize = new Vector2(0.15f, 0.24f);
+
     [Tooltip("How long (seconds) each dropped footprint remains discoverable with the UV flashlight.")]
     [SerializeField] private float traceLifetimeSeconds = 25.0f;
 
@@ -366,6 +371,34 @@ public class GhostAI : MonoBehaviour
 
     [Tooltip("Maximum seconds she will stalk/loom before relocating to a new hiding spot if you never turn around.")]
     [SerializeField] private float maxStalkDurationSeconds = 10.0f;
+
+    [Header("Stage 1E: Blind-Spot Behind-Back Stalking (35% Chance)")]
+    [Tooltip("If true, when Stalking starts she rolls a chance to circle into your VR blind spot (behind your shoulders) and freeze dead-still when you turn around!")]
+    [SerializeField] private bool enableBlindSpotStalking = true;
+
+    [Tooltip("Probability (0.35 = 35% chance) that a Stalk uses Behind-Your-Back Blind-Spot Stalking instead of normal straight-line stalking.")]
+    [Range(0.0f, 1.0f)]
+    [SerializeField] private float blindSpotStalkChance = 0.35f;
+
+    [Tooltip("Speed (meters/second) while circling around your flank and creeping behind your shoulders while your back is turned.")]
+    [Range(0.8f, 3.0f)]
+    [SerializeField] private float blindSpotCreepSpeed = 1.65f;
+
+    [Tooltip("Target distance (meters) behind the player's back where she looms (inside the 4m Danger Meter zone so your heartbeat warns you!).")]
+    [Range(1.2f, 3.2f)]
+    [SerializeField] private float blindSpotBehindDistance = 1.85f;
+
+    [Tooltip("Minimum wide arc radius (meters) maintained while circling from in front/beside you into your rear blind spot.")]
+    [Range(2.2f, 5.5f)]
+    [SerializeField] private float blindSpotFlankArcRadius = 3.1f;
+
+    [Tooltip("Seconds she freezes completely motionless (100% solid Blue statue stare) when you physically turn around and catch her behind you before bolting!")]
+    [Range(0.25f, 1.5f)]
+    [SerializeField] private float blindSpotFreezeStareDuration = 0.60f;
+
+    [Tooltip("Maximum seconds she will flank and loom behind your back before retreating if you never turn around.")]
+    [Range(8.0f, 22.0f)]
+    [SerializeField] private float maxBlindSpotStalkDuration = 13.0f;
 
     [Header("Stage 5: Search Hint Visual Settings")]
     [Tooltip("Duration (seconds) of the brief ghostly silhouette flicker when RoundManager triggers a 60s Search Hint.")]
@@ -486,6 +519,17 @@ public class GhostAI : MonoBehaviour
     private float m_LastWallBrushHandprintTime = -10f;
     private float m_NextWallBrushCheckTime = 0f;
 
+    // Stage 1E: Blind-Spot Behind-Back Stalking state
+    private bool m_ForceNextStalkBlindSpot = false;
+    private bool m_HasReachedBehindBackZone = false;
+    private float m_BlindSpotOrbitSideSign = 1f;
+    private float m_BlindSpotFreezeTimer = 0f;
+    private Vector3 m_BlindSpotFrozenWorldPos;
+    private Vector3 m_LastBlindSpotGoalDebug;
+
+    private static readonly float[] s_BlindSpotRearAngles = { 14f, -14f, 0f, 38f, -38f, 64f, -64f };
+    private static readonly float[] s_BlindSpotDistMultipliers = { 1.0f, 0.76f };
+
     private static readonly float[] s_LurkSearchRingFractions = { 0.16f, 0.28f, 0.42f, 0.58f, 0.78f, 1.0f };
 
     public GhostState CurrentState => currentState;
@@ -493,6 +537,8 @@ public class GhostAI : MonoBehaviour
     public bool IsPhasingThroughWall => isPhasingThroughWall;
     public bool IsCloakedWhileFleeing => isCloakedWhileFleeing;
     public bool IsPerformingCornerCut => isPerformingCornerCut;
+    public bool IsBlindSpotStalking => isBlindSpotStalking;
+    public bool IsFrozenInBlindSpotStare => isFrozenInBlindSpotStare;
     public float CurrentSpectralVisibility => currentSpectralVisibility;
 
     /// <summary>
@@ -504,11 +550,17 @@ public class GhostAI : MonoBehaviour
         m_HasMadeLurkEyeContact;
 
     /// <summary>
-    /// True whenever the ghost is operating invisibly (Hidden, Invisible Flee, or sneaking behind cover before/after a Lurk peek) -> Purple UV aura & Purple UV traces!
+    /// True whenever the ghost is operating invisibly (Hidden, Invisible Flee, sneaking behind cover before/after a Lurk peek, or flanking before reaching your blind spot) -> Purple UV aura & Purple UV traces!
     /// False whenever the ghost is exposed/visible (Lurk Corner Peek, Stalking, WatchingPlayer, or Visible Flee) -> Blue body & Blue UV traces!
     /// </summary>
     public bool IsGhostCurrentlyInvisible =>
-        cloakWhileHidden && (currentState == GhostState.Hidden || (currentState == GhostState.Fleeing && isCloakedWhileFleeing) || IsLurkPhaseCloaked());
+        cloakWhileHidden && (currentState == GhostState.Hidden || (currentState == GhostState.Fleeing && isCloakedWhileFleeing) || IsLurkPhaseCloaked() || IsBlindSpotFlankCloaked());
+
+    private bool IsBlindSpotFlankCloaked() =>
+        currentState == GhostState.Stalking &&
+        isBlindSpotStalking &&
+        !isFrozenInBlindSpotStare &&
+        !m_HasReachedBehindBackZone;
 
     private bool IsLurkPhaseCloaked()
     {
@@ -793,13 +845,25 @@ public class GhostAI : MonoBehaviour
         }
         else if (currentState == GhostState.Stalking)
         {
-            // VISIBLE STALKING: Semi-ethereal BLUE phantom form (visible without UV)
-            float eerieFlicker = (Mathf.PerlinNoise(Time.time * 3.8f, m_NoiseSeed) - 0.5f) * 0.14f;
-            targetVisibility = Mathf.Clamp01(stalkPhantomVisibility + eerieFlicker);
-            m_IsUsingHeightWipe = false;
-            transitionSpeed = 2.2f;
-            rimColor = exposedVisibleBlueColor;
-            rimIntensity = 1.25f;
+            if (isFrozenInBlindSpotStare)
+            {
+                // STAGE 1E CAUGHT BEHIND YOUR BACK: Snap instantaneously to crisp 100% solid Spectral BLUE statue stare!
+                targetVisibility = 1.0f;
+                m_IsUsingHeightWipe = false;
+                transitionSpeed = 12.0f;
+                rimColor = exposedVisibleBlueColor;
+                rimIntensity = 1.90f;
+            }
+            else
+            {
+                // VISIBLE STALKING: Semi-ethereal BLUE phantom form (visible without UV)
+                float eerieFlicker = (Mathf.PerlinNoise(Time.time * 3.8f, m_NoiseSeed) - 0.5f) * 0.14f;
+                targetVisibility = Mathf.Clamp01(stalkPhantomVisibility + eerieFlicker);
+                m_IsUsingHeightWipe = false;
+                transitionSpeed = 2.4f;
+                rimColor = exposedVisibleBlueColor;
+                rimIntensity = isBlindSpotStalking ? 1.45f : 1.25f;
+            }
         }
         else
         {
@@ -947,11 +1011,23 @@ public class GhostAI : MonoBehaviour
         float footSideSign = m_NextFootIsRight ? 1.0f : -1.0f;
         m_NextFootIsRight = !m_NextFootIsRight;
 
-        Vector3 stepWorldPos = transform.position + (rightFlat * (0.11f * footSideSign));
+        Vector3 stepWorldPos = transform.position + (rightFlat * (0.095f * footSideSign));
         float floorY = FindFloorHeightAt(stepWorldPos);
         stepWorldPos.y = floorY + 0.015f;
 
-        Quaternion stepRotation = Quaternion.LookRotation(forwardFlat, Vector3.up) * Quaternion.Euler(90f, 0f, 0f);
+        // Natural outward barefoot toe-out angle (~6-9 deg) + anatomical Left/Right _TraceSeed sign!
+        float outwardToeYaw = footSideSign * Random.Range(5.5f, 9.5f);
+        Quaternion stepRotation =
+            Quaternion.LookRotation(forwardFlat, Vector3.up) *
+            Quaternion.Euler(0f, outwardToeYaw, 0f) *
+            Quaternion.Euler(90f, 0f, 0f);
+
+        float footSeed = footSideSign * Random.Range(0.35f, 9.85f);
+        Vector3 stepScale = new Vector3(
+            Mathf.Max(0.08f, footprintSize.x),
+            Mathf.Max(0.12f, footprintSize.y),
+            1.0f
+        );
 
         GhostTrace pooledTrace = GetNextPooledTrace();
         if (pooledTrace != null)
@@ -960,10 +1036,11 @@ public class GhostAI : MonoBehaviour
                 stepWorldPos,
                 stepRotation,
                 Vector3.up,
-                new Vector3(0.22f, 0.32f, 1.0f),
+                stepScale,
                 traceLifetimeSeconds,
                 GhostTrace.TraceVisualType.Footprint,
-                GetActiveTraceUVColor()
+                GetActiveTraceUVColor(),
+                footSeed
             );
         }
     }
@@ -1223,7 +1300,7 @@ public class GhostAI : MonoBehaviour
 
         Vector3 currentChestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
         bool isActivelyMoving = currentState == GhostState.Fleeing
-            || currentState == GhostState.Stalking
+            || (currentState == GhostState.Stalking && !isFrozenInBlindSpotStare)
             || (currentState == GhostState.Lurking && currentLurkSubState != LurkSubState.PeekingAtPlayer);
         bool isLateTier = IsLateWallPhaseTier;
 
@@ -2246,7 +2323,19 @@ public class GhostAI : MonoBehaviour
         return Vector3.Angle(playerHead.forward, toGhost / distance) <= maxAngleDegrees;
     }
 
-    private void StartStalking()
+    private void ResetBlindSpotStalkState(bool clearForcedFlag)
+    {
+        isBlindSpotStalking = false;
+        isFrozenInBlindSpotStare = false;
+        m_HasReachedBehindBackZone = false;
+        m_BlindSpotFreezeTimer = 0f;
+        if (clearForcedFlag)
+        {
+            m_ForceNextStalkBlindSpot = false;
+        }
+    }
+
+    private void StartStalking(bool forceBlindSpot = false)
     {
         FlattenHorizontalRotation();
         currentLurkSubState = LurkSubState.None;
@@ -2261,20 +2350,67 @@ public class GhostAI : MonoBehaviour
         m_BaseYPosition = transform.position.y;
         m_LastTraceDropPosition = transform.position;
         m_PreviousChestCenter = m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position;
-        Debug.Log($"[{gameObject.name}] Player hasn't found ghost for {stalkStartDelaySeconds:F0}s -> Entering STALKING Phantom state (BLUE)!");
+
+        // Stage 1E: Roll configurable chance (default 35%) for Behind-Your-Back Blind-Spot Stalking!
+        bool useBlindSpot = forceBlindSpot
+            || m_ForceNextStalkBlindSpot
+            || (enableBlindSpotStalking && playerHead != null && Random.value <= blindSpotStalkChance);
+        m_ForceNextStalkBlindSpot = false;
+
+        isBlindSpotStalking = useBlindSpot;
+        isFrozenInBlindSpotStare = false;
+        m_BlindSpotFreezeTimer = 0f;
+
+        if (isBlindSpotStalking && playerHead != null)
+        {
+            Vector3 flatLookForward = GetFlatPlayerLookForward();
+            Vector3 flatLookRight = Vector3.Cross(Vector3.up, flatLookForward).normalized;
+            Vector3 playerToGhost = new Vector3(
+                transform.position.x - playerHead.position.x,
+                0f,
+                transform.position.z - playerHead.position.z
+            );
+
+            if (playerToGhost.sqrMagnitude > 0.01f)
+            {
+                m_BlindSpotOrbitSideSign = Vector3.Dot(playerToGhost, flatLookRight) >= 0f ? 1f : -1f;
+                float rearDot = Vector3.Dot(flatLookForward, playerToGhost.normalized);
+                m_HasReachedBehindBackZone = rearDot <= -0.18f;
+            }
+            else
+            {
+                m_BlindSpotOrbitSideSign = Random.value > 0.5f ? 1f : -1f;
+                m_HasReachedBehindBackZone = true;
+            }
+
+            m_LastBlindSpotGoalDebug = transform.position;
+            Debug.Log($"[{gameObject.name}] Stage 1E BLIND-SPOT STALKING rolled ({blindSpotStalkChance * 100f:F0}% chance)! Circling behind player's {(m_BlindSpotOrbitSideSign > 0f ? "RIGHT" : "LEFT")} shoulder...");
+        }
+        else
+        {
+            m_HasReachedBehindBackZone = false;
+            Debug.Log($"[{gameObject.name}] Player hasn't found ghost for {stalkStartDelaySeconds:F0}s -> Entering classic STALKING Phantom state (BLUE)!");
+        }
     }
 
     private void UpdateStalking()
     {
-        if (triggerOnFlashlightHit && m_GhostTarget != null && m_GhostTarget.IsIlluminated)
+        if (playerHead == null)
         {
-            TriggerFakeEscape("Flashlight caught the ghost stalking!");
+            ResetBlindSpotStalkState(clearForcedFlag: false);
+            StartFleeing();
             return;
         }
 
-        if (playerHead == null)
+        if (isBlindSpotStalking)
         {
-            StartFleeing();
+            UpdateBlindSpotBehindBackStalking();
+            return;
+        }
+
+        if (triggerOnFlashlightHit && m_GhostTarget != null && m_GhostTarget.IsIlluminated)
+        {
+            TriggerFakeEscape("Flashlight caught the ghost stalking!");
             return;
         }
 
@@ -2317,6 +2453,207 @@ public class GhostAI : MonoBehaviour
             Debug.Log($"[{gameObject.name}] Stalk duration finished — retreating to a tactical hiding spot.");
             StartFleeing();
         }
+    }
+
+    private void UpdateBlindSpotBehindBackStalking()
+    {
+        Vector3 flatPlayerPos = new Vector3(playerHead.position.x, m_BaseYPosition, playerHead.position.z);
+        Vector3 currentFlatPos = new Vector3(transform.position.x, m_BaseYPosition, transform.position.z);
+        Vector3 toPlayer = flatPlayerPos - currentFlatPos;
+
+        // 1. PHASE B: Dead-still statue Freeze Stare once caught behind your back!
+        if (isFrozenInBlindSpotStare)
+        {
+            if (toPlayer.sqrMagnitude > 0.001f)
+            {
+                Quaternion stareRot = Quaternion.LookRotation(toPlayer.normalized);
+                transform.rotation = Quaternion.Slerp(transform.rotation, stareRot, rotationSpeed * 1.8f * Time.deltaTime);
+            }
+
+            // Hold completely motionless like a caught statue (only trembling if your Normal capture beam is actively burning her!)
+            Vector3 beamTremble = (m_GhostTarget != null && m_GhostTarget.IsIlluminated)
+                ? CalculateBeamStruggleOffset()
+                : Vector3.zero;
+            transform.position = m_BlindSpotFrozenWorldPos + beamTremble;
+
+            m_BlindSpotFreezeTimer += Time.deltaTime;
+            if (m_BlindSpotFreezeTimer >= blindSpotFreezeStareDuration)
+            {
+                Debug.Log($"[{gameObject.name}] Blind-Spot Freeze Stare ({blindSpotFreezeStareDuration:F2}s) finished — BOLTING!");
+                ResetBlindSpotStalkState(clearForcedFlag: false);
+                StartFleeing();
+            }
+            return;
+        }
+
+        // 2. Check if the player caught her with the Normal Flashlight or by turning around!
+        bool hitByNormalBeam = triggerOnFlashlightHit && m_GhostTarget != null && m_GhostTarget.IsIlluminated;
+        bool hasLOS = HasLineOfSightToPlayer();
+        bool playerSpottedHer = m_HasReachedBehindBackZone && IsPlayerLookingAtGhost() && hasLOS;
+
+        if (hitByNormalBeam || playerSpottedHer)
+        {
+            BeginBlindSpotFreezeStare(hitByNormalBeam
+                ? "Flashlight caught ghost creeping behind your back!"
+                : "Player spun around and caught ghost right behind their back!");
+            return;
+        }
+
+        Vector3 flatLookForward = GetFlatPlayerLookForward();
+        Vector3 playerToGhost = currentFlatPos - flatPlayerPos;
+        float distFromPlayer = playerToGhost.magnitude;
+        Vector3 dirFromPlayer = distFromPlayer > 0.01f ? (playerToGhost / distFromPlayer) : (-flatLookForward);
+
+        // Latch once she crosses behind your shoulder line into your rear blind spot!
+        float forwardDot = Vector3.Dot(flatLookForward, dirFromPlayer);
+        if (!m_HasReachedBehindBackZone && forwardDot <= -0.18f)
+        {
+            m_HasReachedBehindBackZone = true;
+            Debug.Log($"[{gameObject.name}] Ghost slipped behind player's shoulders — materializing silently in blind spot!");
+        }
+
+        // Compute wall-safe target point behind the player's back
+        Vector3 goalFlatPos = FindWallSafeBehindPlayerPosition(flatPlayerPos, flatLookForward);
+        m_LastBlindSpotGoalDebug = goalFlatPos;
+
+        // Important VR polish: as the player starts turning their head toward her (within 85 deg), plant her feet
+        // so she does NOT orbit away from their turning gaze — guaranteeing they catch her standing right behind them!
+        float playerViewAngleToGhost = Vector3.Angle(playerHead.forward, ( (m_GhostTarget != null ? m_GhostTarget.TargetCenter : transform.position) - playerHead.position ).normalized);
+        bool playerTurningTowardHer = m_HasReachedBehindBackZone && hasLOS && playerViewAngleToGhost <= 85.0f;
+
+        if (!playerTurningTowardHer)
+        {
+            Vector3 nextFlatPos = currentFlatPos;
+            float activeCreepSpeed = blindSpotCreepSpeed * GetActiveWallSpeedMultiplier();
+
+            if (!m_HasReachedBehindBackZone && distFromPlayer > 0.25f)
+            {
+                // Wide peripheral arc around the nearer shoulder so she never cuts straight across your front face!
+                float desiredArcRadius = Mathf.Max(distFromPlayer, blindSpotFlankArcRadius);
+                float angularStepRad = (activeCreepSpeed / Mathf.Max(1.2f, desiredArcRadius)) * Time.deltaTime;
+                float stepDegrees = angularStepRad * Mathf.Rad2Deg * m_BlindSpotOrbitSideSign;
+                Vector3 rotatedDir = Quaternion.Euler(0f, stepDegrees, 0f) * dirFromPlayer;
+                float nextRadius = Mathf.MoveTowards(distFromPlayer, blindSpotFlankArcRadius, activeCreepSpeed * 0.65f * Time.deltaTime);
+                nextFlatPos = flatPlayerPos + rotatedDir.normalized * nextRadius;
+            }
+            else
+            {
+                // Safely behind your shoulders: creep smoothly into the 1.85m behind-back ambush spot!
+                float distToGoal = Vector3.Distance(currentFlatPos, goalFlatPos);
+                if (distToGoal > 0.08f)
+                {
+                    nextFlatPos = Vector3.MoveTowards(currentFlatPos, goalFlatPos, activeCreepSpeed * Time.deltaTime);
+                }
+            }
+
+            Vector3 moveDelta = nextFlatPos - currentFlatPos;
+            if (moveDelta.sqrMagnitude > 0.000004f)
+            {
+                Vector3 moveDir = moveDelta.normalized;
+                m_LastPathForward = m_HasReachedBehindBackZone && toPlayer.sqrMagnitude > 0.001f
+                    ? toPlayer.normalized
+                    : moveDir;
+
+                float floorY = FindFloorHeightAt(nextFlatPos);
+                m_BaseYPosition = floorY + (m_RestingBodyHeight * 0.5f);
+                float hoverY = m_BaseYPosition + CalculateHoverAndShimmerOffset();
+                transform.position = new Vector3(nextFlatPos.x, hoverY, nextFlatPos.z);
+
+                UpdateTraceTrail(moveDir);
+                UpdateWallBrushHandprint(moveDir);
+            }
+            else
+            {
+                ApplyHoverAndStruggleOffset(m_BaseYPosition);
+            }
+        }
+        else
+        {
+            // Planted behind you as you begin turning around!
+            ApplyHoverAndStruggleOffset(m_BaseYPosition);
+        }
+
+        // Always face toward the back of the player's head once behind them (or along flank path while circling)
+        Vector3 desiredFaceDir = (m_HasReachedBehindBackZone && toPlayer.sqrMagnitude > 0.001f)
+            ? toPlayer.normalized
+            : m_LastPathForward;
+        if (desiredFaceDir.sqrMagnitude > 0.001f)
+        {
+            Quaternion lookRot = Quaternion.LookRotation(desiredFaceDir);
+            transform.rotation = Quaternion.Slerp(transform.rotation, lookRot, rotationSpeed * Time.deltaTime);
+        }
+
+        m_StalkTimer += Time.deltaTime;
+        if (m_StalkTimer >= maxBlindSpotStalkDuration)
+        {
+            Debug.Log($"[{gameObject.name}] Blind-Spot Stalk duration ({maxBlindSpotStalkDuration:F0}s) finished without turn-around — retreating to hiding spot.");
+            ResetBlindSpotStalkState(clearForcedFlag: false);
+            StartFleeing();
+        }
+    }
+
+    private void BeginBlindSpotFreezeStare(string reason)
+    {
+        isFrozenInBlindSpotStare = true;
+        m_HasReachedBehindBackZone = true;
+        m_BlindSpotFreezeTimer = 0f;
+        m_BlindSpotFrozenWorldPos = new Vector3(transform.position.x, m_BaseYPosition, transform.position.z);
+        transform.position = m_BlindSpotFrozenWorldPos;
+        currentSpectralVisibility = 1.0f;
+
+        if (playerHead != null)
+        {
+            Vector3 toPlayerFlat = new Vector3(
+                playerHead.position.x - transform.position.x,
+                0f,
+                playerHead.position.z - transform.position.z
+            );
+            if (toPlayerFlat.sqrMagnitude > 0.001f)
+            {
+                m_LastPathForward = toPlayerFlat.normalized;
+                transform.rotation = Quaternion.LookRotation(m_LastPathForward);
+            }
+        }
+
+        Debug.Log($"[{gameObject.name}] *** CAUGHT BEHIND YOUR BACK! *** {reason} -> Freezing dead-still for {blindSpotFreezeStareDuration:F2}s before bolting!");
+    }
+
+    private Vector3 GetFlatPlayerLookForward()
+    {
+        if (playerHead == null)
+            return Vector3.forward;
+
+        Vector3 flat = new Vector3(playerHead.forward.x, 0f, playerHead.forward.z);
+        if (flat.sqrMagnitude < 0.001f)
+            flat = new Vector3(playerHead.up.x, 0f, playerHead.up.z);
+
+        return flat.sqrMagnitude > 0.001f ? flat.normalized : Vector3.forward;
+    }
+
+    private Vector3 FindWallSafeBehindPlayerPosition(Vector3 flatPlayerPos, Vector3 flatLookForward)
+    {
+        Vector3 rearBaseDir = -flatLookForward;
+        float wallClearRadius = Mathf.Max(0.22f, wallDetectRadius * 0.9f);
+
+        for (int d = 0; d < s_BlindSpotDistMultipliers.Length; d++)
+        {
+            float dist = Mathf.Max(1.15f, blindSpotBehindDistance * s_BlindSpotDistMultipliers[d]);
+            for (int a = 0; a < s_BlindSpotRearAngles.Length; a++)
+            {
+                // Negative yaw on -flatLookForward shifts toward +flatLookRight when m_BlindSpotOrbitSideSign > 0 (same shoulder!)
+                float signedAngle = -s_BlindSpotRearAngles[a] * m_BlindSpotOrbitSideSign;
+                Vector3 candidateDir = Quaternion.Euler(0f, signedAngle, 0f) * rearBaseDir;
+                Vector3 candFlat = flatPlayerPos + candidateDir * dist;
+                Vector3 candChest = new Vector3(candFlat.x, m_BaseYPosition + 0.15f, candFlat.z);
+
+                if (!IsPointInsideWall(candChest, wallClearRadius) && HasLineOfSightFromPlayerToPoint(candChest))
+                {
+                    return candFlat;
+                }
+            }
+        }
+
+        return flatPlayerPos + rearBaseDir * blindSpotBehindDistance;
     }
 
     private bool IsPlayerLookingAtGhost()
@@ -2602,6 +2939,7 @@ public class GhostAI : MonoBehaviour
             currentLurkSubState = LurkSubState.None;
             isCloakedWhileFleeing = false;
             ResetCornerCutState(clearForcedFlag: false);
+            ResetBlindSpotStalkState(clearForcedFlag: false);
             if (m_GhostTarget != null)
             {
                 m_GhostTarget.SetCloakCaptureImmunity(false);
@@ -3196,6 +3534,94 @@ public class GhostAI : MonoBehaviour
         );
     }
 
+    /// <summary>
+    /// Play-Mode testing shortcut: stamps a PURPLE Left Barefoot and BLUE Right Barefoot pair right on the floor in front of the player!
+    /// </summary>
+    [ContextMenu("Spawn Test UV Barefoot Pair On Floor (Test)")]
+    public void SpawnTestUVBarefootPairOnFloor()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning($"[{gameObject.name}] Enter Play Mode first, then run 'Spawn Test UV Barefoot Pair On Floor (Test)' to inspect them with your UV Flashlight!");
+            return;
+        }
+
+        if (m_TracePool.Count == 0)
+        {
+            InitializeTracePool();
+        }
+
+        Transform refTransform = playerHead != null ? playerHead : transform;
+        Vector3 forwardFlat = new Vector3(refTransform.forward.x, 0f, refTransform.forward.z);
+        if (forwardFlat.sqrMagnitude < 0.001f)
+            forwardFlat = Vector3.forward;
+        else
+            forwardFlat.Normalize();
+
+        Vector3 rightFlat = Vector3.Cross(Vector3.up, forwardFlat).normalized;
+        Vector3 baseSpot = refTransform.position + forwardFlat * 1.25f;
+        float floorY = FindFloorHeightAt(baseSpot);
+
+        Vector3 scale = new Vector3(Mathf.Max(0.08f, footprintSize.x), Mathf.Max(0.12f, footprintSize.y), 1.0f);
+
+        // Left Barefoot (_TraceSeed < 0) in PURPLE (Invisible state)
+        Vector3 leftPos = new Vector3(baseSpot.x, floorY + 0.015f, baseSpot.z) - rightFlat * 0.11f;
+        Quaternion leftRot = Quaternion.LookRotation(forwardFlat, Vector3.up) * Quaternion.Euler(0f, -7.5f, 0f) * Quaternion.Euler(90f, 0f, 0f);
+        GhostTrace leftTrace = GetNextPooledTrace();
+        if (leftTrace != null)
+        {
+            leftTrace.ActivateTrace(
+                leftPos,
+                leftRot,
+                Vector3.up,
+                scale,
+                wallMarkLifetimeSeconds,
+                GhostTrace.TraceVisualType.Footprint,
+                invisibleStateTraceUVColor,
+                -2.17f
+            );
+        }
+
+        // Right Barefoot (_TraceSeed > 0) slightly ahead in BLUE (Visible state)
+        Vector3 rightPos = new Vector3(baseSpot.x, floorY + 0.015f, baseSpot.z) + rightFlat * 0.11f + forwardFlat * 0.12f;
+        Quaternion rightRot = Quaternion.LookRotation(forwardFlat, Vector3.up) * Quaternion.Euler(0f, 7.5f, 0f) * Quaternion.Euler(90f, 0f, 0f);
+        GhostTrace rightTrace = GetNextPooledTrace();
+        if (rightTrace != null)
+        {
+            rightTrace.ActivateTrace(
+                rightPos,
+                rightRot,
+                Vector3.up,
+                scale,
+                wallMarkLifetimeSeconds,
+                GhostTrace.TraceVisualType.Footprint,
+                visibleStateTraceUVColor,
+                1.83f
+            );
+        }
+
+        Debug.Log($"[{gameObject.name}] Spawned Test UV Barefoot Pair (PURPLE Left Foot + BLUE Right Foot) on floor at {baseSpot}!");
+    }
+
+    /// <summary>
+    /// Play-Mode testing shortcut: immediately starts Stage 1E Behind-Your-Back Blind-Spot Stalking without waiting 16s or rolling the 35% RNG!
+    /// </summary>
+    [ContextMenu("Trigger Blind-Spot Behind-Back Stalk Now (Test)")]
+    public void TriggerBlindSpotStalkNow()
+    {
+        if (!Application.isPlaying)
+        {
+            m_ForceNextStalkBlindSpot = true;
+            Debug.Log($"[{gameObject.name}] Armed 'm_ForceNextStalkBlindSpot = true'! Or enter Play Mode first and run 'Trigger Blind-Spot Behind-Back Stalk Now (Test)' to start immediately!");
+            return;
+        }
+
+        if (currentState == GhostState.Captured)
+            return;
+
+        StartStalking(forceBlindSpot: true);
+    }
+
     [ContextMenu("Trigger Fake Escape")]
     public void TriggerFakeEscape(string reason = "Triggered")
     {
@@ -3204,6 +3630,7 @@ public class GhostAI : MonoBehaviour
 
         FlattenHorizontalRotation();
         currentLurkSubState = LurkSubState.None;
+        ResetBlindSpotStalkState(clearForcedFlag: false);
         m_HiddenTimer = 0f;
         m_StalkTimer = 0f;
         m_UVExposureTimer = 0f;
@@ -3285,6 +3712,7 @@ public class GhostAI : MonoBehaviour
         isCloakedWhileFleeing = false;
         m_ForceNextEscapeCloaked = false;
         ResetCornerCutState(clearForcedFlag: true);
+        ResetBlindSpotStalkState(clearForcedFlag: true);
         transform.localScale = m_InitialLocalScale;
 
         GhostHidingSpot spawnSpot = GetSmartNextHidingSpot();
@@ -3343,6 +3771,7 @@ public class GhostAI : MonoBehaviour
 
         bool forceCornerCut = m_ForceNextEscapeCornerCut;
         ResetCornerCutState(clearForcedFlag: true);
+        ResetBlindSpotStalkState(clearForcedFlag: false);
         m_ArmedCornerCutForThisChase = forceCornerCut;
         m_HadLineOfSightDuringFlee = HasLineOfSightToPlayer();
         m_WasPhasingLastFrameForCut = isPhasingThroughWall;
@@ -3467,6 +3896,7 @@ public class GhostAI : MonoBehaviour
         currentLurkSubState = LurkSubState.None;
         isCloakedWhileFleeing = false;
         ResetCornerCutState(clearForcedFlag: true);
+        ResetBlindSpotStalkState(clearForcedFlag: true);
         if (m_GhostTarget != null)
         {
             m_GhostTarget.SetCloakCaptureImmunity(false);
@@ -3515,8 +3945,19 @@ public class GhostAI : MonoBehaviour
         }
         else if (currentState == GhostState.Stalking && playerHead != null)
         {
-            Gizmos.color = Color.red;
-            Gizmos.DrawLine(transform.position, playerHead.position);
+            if (isBlindSpotStalking)
+            {
+                Gizmos.color = isFrozenInBlindSpotStare ? Color.cyan : new Color(0.75f, 0.25f, 1.0f, 0.95f);
+                Gizmos.DrawWireSphere(m_LastBlindSpotGoalDebug, 0.26f);
+                Gizmos.DrawLine(transform.position, m_LastBlindSpotGoalDebug);
+                Gizmos.color = isFrozenInBlindSpotStare ? Color.white : Color.red;
+                Gizmos.DrawLine(transform.position, playerHead.position);
+            }
+            else
+            {
+                Gizmos.color = Color.red;
+                Gizmos.DrawLine(transform.position, playerHead.position);
+            }
         }
     }
 }
