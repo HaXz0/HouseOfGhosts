@@ -1,6 +1,10 @@
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit.Filtering;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
+#if UNITY_EDITOR
+using UnityEditor;
+using UnityEditor.SceneManagement;
+#endif
 
 [ExecuteAlways]
 public sealed class InteractionTestStations : MonoBehaviour
@@ -12,54 +16,49 @@ public sealed class InteractionTestStations : MonoBehaviour
     readonly Color trim = new Color(0.16f, 0.17f, 0.15f);
     readonly Color handleColor = new Color(0.65f, 0.58f, 0.39f);
 
-    Transform previewRoot;
-    bool buildingPreview;
-
+#if UNITY_EDITOR
     void OnEnable()
     {
         if (Application.IsPlaying(gameObject) || !gameObject.scene.IsValid())
             return;
 
-        buildingPreview = true;
-        previewRoot = CreateContainer("Station Preview (not saved)", transform, Vector3.zero);
-        CreateDoor();
-        CreateCupboard();
-        CreateDrawers();
-        CreateLamp();
-
-        foreach (var previewTransform in previewRoot.GetComponentsInChildren<Transform>(true))
-            previewTransform.gameObject.hideFlags = HideFlags.DontSaveInEditor | HideFlags.DontSaveInBuild | HideFlags.NotEditable;
-
-        buildingPreview = false;
+        EditorApplication.delayCall += CreateSceneStations;
     }
 
     void OnDisable()
     {
-        if (previewRoot == null)
-            return;
-
-        if (Application.isPlaying)
-            Destroy(previewRoot.gameObject);
-        else
-            DestroyImmediate(previewRoot.gameObject);
-
-        previewRoot = null;
+        EditorApplication.delayCall -= CreateSceneStations;
     }
 
-    void Start()
+    void CreateSceneStations()
     {
-        if (!Application.IsPlaying(gameObject))
+        if (this == null || !isActiveAndEnabled || EditorApplication.isPlayingOrWillChangePlaymode || !gameObject.scene.IsValid())
             return;
 
+        if (transform.childCount != 0)
+        {
+            Debug.LogWarning("Interaction Test Stations already contains objects; existing objects were left unchanged.", this);
+            return;
+        }
+
+        var scene = gameObject.scene;
+        var wasDirty = scene.isDirty;
         CreateDoor();
         CreateCupboard();
         CreateDrawers();
         CreateLamp();
+        EditorSceneManager.MarkSceneDirty(scene);
+        Undo.DestroyObjectImmediate(this);
+        if (wasDirty)
+            Debug.Log("Interaction test stations were created. Save the scene to keep them.");
+        else if (!EditorSceneManager.SaveScene(scene))
+            Debug.LogWarning("The interaction test stations were created, but the scene could not be saved.");
     }
 
     void CreateDoor()
     {
-        var station = CreateContainer("Door Station", buildingPreview ? previewRoot : transform, new Vector3(-3.2f, 0f, 1.65f));
+        var station = CreateContainer("Door Station", transform, new Vector3(-3.2f, 0f, 1.65f));
+        Undo.RegisterCreatedObjectUndo(station.gameObject, "Create Door Station");
         Box("Left Frame", station, new Vector3(-0.49f, 1.05f, 0f), new Vector3(0.1f, 2.1f, 0.16f), trim);
         Box("Right Frame", station, new Vector3(0.49f, 1.05f, 0f), new Vector3(0.1f, 2.1f, 0.16f), trim);
         Box("Top Frame", station, new Vector3(0f, 2.05f, 0f), new Vector3(1.05f, 0.1f, 0.16f), trim);
@@ -72,7 +71,8 @@ public sealed class InteractionTestStations : MonoBehaviour
 
     void CreateCupboard()
     {
-        var station = CreateContainer("Cupboard Station", buildingPreview ? previewRoot : transform, new Vector3(-1.65f, 0f, 1.7f));
+        var station = CreateContainer("Cupboard Station", transform, new Vector3(-1.65f, 0f, 1.7f));
+        Undo.RegisterCreatedObjectUndo(station.gameObject, "Create Cupboard Station");
         Box("Left Side", station, new Vector3(-0.42f, 0.85f, 0.15f), new Vector3(0.06f, 1.7f, 0.55f), wood);
         Box("Right Side", station, new Vector3(0.42f, 0.85f, 0.15f), new Vector3(0.06f, 1.7f, 0.55f), wood);
         Box("Top", station, new Vector3(0f, 1.68f, 0.15f), new Vector3(0.9f, 0.06f, 0.55f), wood);
@@ -89,9 +89,6 @@ public sealed class InteractionTestStations : MonoBehaviour
     void CreateHingeHandle(Transform hinge, Vector3 position)
     {
         var handle = Box("Grab Handle", hinge, position, new Vector3(0.1f, 0.13f, 0.1f), handleColor);
-        if (buildingPreview)
-            return;
-
         handle.SetActive(false);
         handle.AddComponent<XRSimpleInteractable>();
         handle.AddComponent<XRHingedHandle>().Configure(hinge, 0f, 105f);
@@ -100,7 +97,8 @@ public sealed class InteractionTestStations : MonoBehaviour
 
     void CreateDrawers()
     {
-        var station = CreateContainer("Drawer Station", buildingPreview ? previewRoot : transform, new Vector3(1.65f, 0f, 1.7f));
+        var station = CreateContainer("Drawer Station", transform, new Vector3(1.65f, 0f, 1.7f));
+        Undo.RegisterCreatedObjectUndo(station.gameObject, "Create Drawer Station");
         Box("Left Side", station, new Vector3(-0.42f, 0.5f, 0.16f), new Vector3(0.06f, 1f, 0.58f), wood);
         Box("Right Side", station, new Vector3(0.42f, 0.5f, 0.16f), new Vector3(0.06f, 1f, 0.58f), wood);
         Box("Top", station, new Vector3(0f, 0.98f, 0.16f), new Vector3(0.9f, 0.06f, 0.58f), wood);
@@ -117,23 +115,21 @@ public sealed class InteractionTestStations : MonoBehaviour
         var start = CreateContainer("Closed Position", station, drawer.localPosition);
         var end = CreateContainer("Open Position", station, drawer.localPosition + Vector3.back * 0.38f);
         var handle = Box("Grab Handle", drawer, new Vector3(0f, 0f, -0.075f), new Vector3(0.18f, 0.08f, 0.1f), handleColor);
-        if (!buildingPreview)
-        {
-            handle.SetActive(false);
-            var slider = handle.AddComponent<XRSlider>();
-            slider.handle = drawer;
-            slider.start = start;
-            slider.end = end;
-            slider.defaultValue = 0f;
-            handle.SetActive(true);
-        }
+        handle.SetActive(false);
+        var slider = handle.AddComponent<XRSlider>();
+        slider.handle = drawer;
+        slider.start = start;
+        slider.end = end;
+        slider.defaultValue = 0f;
+        handle.SetActive(true);
 
         Label(station, "DRAWER\nGrab handle to open / close", new Vector3(0f, 1.27f, 0f));
     }
 
     void CreateLamp()
     {
-        var station = CreateContainer("Lamp Station", buildingPreview ? previewRoot : transform, new Vector3(3.2f, 0f, 1.65f));
+        var station = CreateContainer("Lamp Station", transform, new Vector3(3.2f, 0f, 1.65f));
+        Undo.RegisterCreatedObjectUndo(station.gameObject, "Create Lamp Station");
         if (lampPrefab != null)
         {
             var lamp = Instantiate(lampPrefab, station);
@@ -159,9 +155,6 @@ public sealed class InteractionTestStations : MonoBehaviour
         var switchBase = Box("Switch Base", station, new Vector3(0.38f, 1.05f, -0.2f), new Vector3(0.22f, 0.22f, 0.06f), trim);
         var button = Box("Press Switch", station, new Vector3(0.38f, 1.05f, -0.25f), new Vector3(0.13f, 0.13f, 0.06f), handleColor);
         Label(station, "LAMP\nPress switch to turn on / off", new Vector3(0f, 2f, 0f));
-        if (buildingPreview)
-            return;
-
         var toggle = lightObject.AddComponent<ToggleLight>();
         toggle.isOn = false;
 
@@ -174,13 +167,7 @@ public sealed class InteractionTestStations : MonoBehaviour
         var audioSource = switchBase.AddComponent<AudioSource>();
         audioSource.spatialBlend = 1f;
         audioSource.playOnAwake = false;
-        interactable.selectEntered.AddListener(args =>
-        {
-            toggle.Flip();
-            SetColor(button, toggle.isOn ? new Color(0.78f, 0.68f, 0.38f) : handleColor);
-            if (switchClick != null)
-                audioSource.PlayOneShot(switchClick);
-        });
+        button.AddComponent<XRLampSwitch>().Configure(toggle, audioSource, switchClick);
         button.SetActive(true);
     }
 
@@ -206,11 +193,14 @@ public sealed class InteractionTestStations : MonoBehaviour
     static void SetColor(GameObject target, Color color)
     {
         var renderer = target.GetComponent<Renderer>();
-        var properties = new MaterialPropertyBlock();
-        renderer.GetPropertyBlock(properties);
-        properties.SetColor("_BaseColor", color);
-        properties.SetColor("_Color", color);
-        renderer.SetPropertyBlock(properties);
+        var materialPath = color == new Color(0.30f, 0.21f, 0.16f)
+            ? "Assets/_Course Library/Materials/Object Materials/Material_Wood_Rustic.mat"
+            : color == new Color(0.16f, 0.17f, 0.15f)
+                ? "Assets/_Course Library/Materials/Solid Colors/GreyDark.mat"
+                : "Assets/_Course Library/Materials/Solid Colors/Yellow.mat";
+        var material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+        if (material != null)
+            renderer.sharedMaterial = material;
     }
 
     static void Label(Transform parent, string content, Vector3 position)
@@ -228,4 +218,5 @@ public sealed class InteractionTestStations : MonoBehaviour
         text.color = Color.white;
         labelObject.GetComponent<MeshRenderer>().sharedMaterial = text.font.material;
     }
+#endif
 }
