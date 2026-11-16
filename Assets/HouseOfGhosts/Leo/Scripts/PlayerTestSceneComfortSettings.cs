@@ -47,10 +47,20 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
     LocomotionProvider[] m_LocomotionProviders;
     Camera m_PlayerCamera;
     Transform m_LeftWrist;
+    ArmsVRController m_Arms;
     NearFarInteractor m_RightNearFarInteractor;
     XRInteractorLineVisual[] m_MenuRayVisuals;
     CanvasGroup m_CanvasGroup;
     RectTransform m_CanvasRect;
+    RectTransform m_MenuContent;
+    GameObject m_MainPage;
+    GameObject m_ArmPage;
+    GameObject m_CalibrationStatusObject;
+    Text m_CalibrationStatusText;
+    Text m_ArmScaleLabel;
+    Slider m_ArmScaleSlider;
+    Coroutine m_CalibrationRoutine;
+    Coroutine m_HideCalibrationStatusRoutine;
     TunnelingVignetteController m_VignetteController;
     Button m_TeleportButton;
     Button m_SmoothMoveButton;
@@ -71,6 +81,7 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
     bool m_SmoothTurning;
     bool m_VignetteEnabled;
     bool m_MenuVisible;
+    bool m_IsCalibrating;
     bool m_MenuRayHovering;
     bool m_HideTimerStarted;
     float m_HideTimer;
@@ -91,8 +102,8 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
         m_PlayerCamera = xrOrigin.Camera != null ? xrOrigin.Camera : Camera.main;
         m_LeftWrist = FindChildByName(xrOrigin.transform, "Left Controller");
-        var arms = xrOrigin.GetComponentInChildren<ArmsVRController>(true);
-        if (arms == null || !arms.isActiveAndEnabled)
+        m_Arms = xrOrigin.GetComponentInChildren<ArmsVRController>(true);
+        if (m_Arms == null || !m_Arms.isActiveAndEnabled)
         {
             BindHandModel(xrOrigin.transform, "Left Controller", "VR_Hand_Blue_Left");
             BindHandModel(xrOrigin.transform, "Right Controller", "VR_Hand_Blue_Right");
@@ -160,7 +171,10 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
     void OnApplicationPause(bool paused)
     {
         if (paused)
+        {
+            CancelCalibration();
             SaveSettingsNow();
+        }
     }
 
     void OnApplicationQuit()
@@ -168,8 +182,33 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         SaveSettingsNow();
     }
 
+    void OnDisable()
+    {
+        if (m_CalibrationRoutine != null)
+            StopCoroutine(m_CalibrationRoutine);
+        if (m_HideCalibrationStatusRoutine != null)
+            StopCoroutine(m_HideCalibrationStatusRoutine);
+        m_CalibrationRoutine = null;
+        m_HideCalibrationStatusRoutine = null;
+        m_IsCalibrating = false;
+        if (m_CalibrationStatusObject != null)
+            m_CalibrationStatusObject.SetActive(false);
+        if (m_CanvasGroup != null)
+        {
+            m_CanvasGroup.alpha = 0f;
+            m_CanvasGroup.interactable = false;
+            m_CanvasGroup.blocksRaycasts = false;
+        }
+        m_MenuVisible = false;
+        m_MenuRayHovering = false;
+        UpdateMenuRayVisuals();
+        RestoreLocomotionProviders();
+    }
+
     void OnDestroy()
     {
+        if (m_CalibrationStatusObject != null)
+            Destroy(m_CalibrationStatusObject);
         if (m_RightNearFarInteractor != null)
         {
             m_RightNearFarInteractor.uiHoverEntered.RemoveListener(OnMenuUIHoverEntered);
@@ -315,7 +354,10 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
         var panel = CreateImage("Panel", m_CanvasRect, Vector2.zero, new Vector2(480f, 660f), k_PanelColor);
         panel.raycastTarget = false;
+        m_MainPage = CreateMenuPage("Movement Settings");
+        m_MenuContent = m_MainPage.GetComponent<RectTransform>();
         CreateText("Title", "FIELD SETTINGS", new Vector2(0f, 305f), new Vector2(440f, 44f), 28, TextAnchor.MiddleCenter, FontStyle.Bold);
+        CreateButton("Open Arm Settings", "ARMS", new Vector2(170f, 305f), new Vector2(90f, 40f), () => SetArmPage(true));
         CreateText("Movement Label", "MOVEMENT", new Vector2(-190f, 255f), new Vector2(400f, 28f), 19, TextAnchor.MiddleLeft, FontStyle.Bold);
         m_TeleportButton = CreateButton("Teleport", "TELEPORT", new Vector2(-108f, 215f), new Vector2(208f, 44f), () => SetMovementMode(false));
         m_SmoothMoveButton = CreateButton("Smooth Move", "WALK", new Vector2(108f, 215f), new Vector2(208f, 44f), () => SetMovementMode(true));
@@ -360,6 +402,26 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
             UpdateValueLabels();
         });
 
+        m_ArmPage = CreateMenuPage("Arm Settings");
+        m_MenuContent = m_ArmPage.GetComponent<RectTransform>();
+        CreateText("Arm Title", "ARM SETTINGS", new Vector2(-30f, 305f), new Vector2(340f, 44f), 26, TextAnchor.MiddleCenter, FontStyle.Bold);
+        CreateButton("Back to Settings", "BACK", new Vector2(170f, 305f), new Vector2(90f, 40f), () => SetArmPage(false));
+        m_ArmScaleLabel = CreateText("Arm Length Label", "ARM LENGTH", new Vector2(0f, 225f), new Vector2(400f, 35f), 21, TextAnchor.MiddleLeft, FontStyle.Bold);
+        var startingScale = m_Arms != null ? m_Arms.ArmScale : 1f;
+        m_ArmScaleSlider = CreateSlider("Arm Length", new Vector2(0f, 175f), ArmsVRController.MinimumArmScale, ArmsVRController.MaximumArmScale, startingScale, SetArmScale);
+        CreateText("Estimate Label", "Estimated reach - adjust to fit", new Vector2(0f, 125f), new Vector2(400f, 40f), 19, TextAnchor.MiddleCenter, FontStyle.Normal);
+        var calibrateButton = CreateButton("Calibrate Arms", "CALIBRATE ARMS", new Vector2(0f, 35f), new Vector2(360f, 52f), StartArmCalibration);
+        var resetButton = CreateButton("Reset Arms", "RESET LENGTH", new Vector2(0f, -35f), new Vector2(360f, 52f), ResetArmCalibration);
+        CreateButton("Cancel Calibration", "CANCEL CALIBRATION", new Vector2(0f, -105f), new Vector2(360f, 52f), CancelCalibration);
+        if (m_Arms == null || !m_Arms.isActiveAndEnabled)
+        {
+            calibrateButton.interactable = false;
+            resetButton.interactable = false;
+            m_ArmScaleSlider.interactable = false;
+        }
+        UpdateArmScaleLabel();
+        SetArmPage(false);
+
         UpdateControlStates();
         UpdateValueLabels();
         SetMenuVisible(false);
@@ -387,6 +449,196 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         UpdateControlStates();
     }
 
+    GameObject CreateMenuPage(string pageName)
+    {
+        var page = new GameObject(pageName, typeof(RectTransform));
+        page.transform.SetParent(m_CanvasRect, false);
+        SetRect(page.GetComponent<RectTransform>(), Vector2.zero, m_CanvasRect.sizeDelta);
+        return page;
+    }
+
+    void SetArmPage(bool showArms)
+    {
+        m_MainPage.SetActive(!showArms);
+        m_ArmPage.SetActive(showArms);
+    }
+
+    void SetArmScale(float value)
+    {
+        if (m_Arms == null || !m_Arms.isActiveAndEnabled)
+            return;
+
+        m_Arms.SetArmScale(value);
+        UpdateArmScaleLabel();
+        ScheduleSave();
+    }
+
+    void ResetArmCalibration()
+    {
+        CancelCalibration();
+        SetArmScale(1f);
+        if (m_ArmScaleSlider != null)
+            m_ArmScaleSlider.SetValueWithoutNotify(1f);
+    }
+
+    void UpdateArmScaleLabel()
+    {
+        if (m_ArmScaleLabel != null)
+            m_ArmScaleLabel.text = m_Arms != null && m_Arms.isActiveAndEnabled
+                ? $"ARM LENGTH   {m_Arms.ArmScale * 100f:0}%"
+                : "ARMS UNAVAILABLE";
+    }
+
+    void StartArmCalibration()
+    {
+        if (m_IsCalibrating || m_Arms == null || !m_Arms.isActiveAndEnabled)
+            return;
+
+        if (m_HideCalibrationStatusRoutine != null)
+        {
+            StopCoroutine(m_HideCalibrationStatusRoutine);
+            m_HideCalibrationStatusRoutine = null;
+        }
+        m_IsCalibrating = true;
+        if (!m_MenuVisible)
+            SuppressLocomotionProviders();
+        ShowCalibrationStatus();
+        m_CalibrationRoutine = StartCoroutine(CalibrateArms());
+    }
+
+    IEnumerator CalibrateArms()
+    {
+        const float preparationTime = 5f;
+        const float sampleTime = 1.25f;
+        const float maximumDrift = 0.06f;
+        var elapsed = 0f;
+        while (elapsed < preparationTime)
+        {
+            SetCalibrationStatus($"ARM CALIBRATION\nStretch both arms sideways\nHold still in {Mathf.CeilToInt(preparationTime - elapsed)}");
+            elapsed += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        elapsed = 0f;
+        var sampleCount = 0;
+        var scaleTotal = 0f;
+        var firstLeft = Vector3.zero;
+        var firstRight = Vector3.zero;
+        while (elapsed < sampleTime)
+        {
+            if (m_Arms == null)
+            {
+                FinishCalibration("ARMS UNAVAILABLE");
+                yield break;
+            }
+            if (!m_Arms.TryGetCalibrationSample(out var scale, out var leftWrist, out var rightWrist, out var error))
+            {
+                FinishCalibration("CALIBRATION FAILED\n" + error);
+                yield break;
+            }
+
+            if (sampleCount == 0)
+            {
+                firstLeft = leftWrist;
+                firstRight = rightWrist;
+            }
+            else if (Vector3.Distance(firstLeft, leftWrist) > maximumDrift || Vector3.Distance(firstRight, rightWrist) > maximumDrift)
+            {
+                FinishCalibration("CALIBRATION FAILED\nHold both arms still");
+                yield break;
+            }
+
+            SetCalibrationStatus("ARM CALIBRATION\nHold still...");
+            scaleTotal += scale;
+            sampleCount++;
+            elapsed += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        if (sampleCount == 0)
+        {
+            FinishCalibration("CALIBRATION FAILED\nNo tracking samples");
+            yield break;
+        }
+        if (m_Arms == null || !m_Arms.isActiveAndEnabled)
+        {
+            FinishCalibration("ARMS UNAVAILABLE");
+            yield break;
+        }
+
+        SetArmScale(scaleTotal / sampleCount);
+        m_ArmScaleSlider.SetValueWithoutNotify(m_Arms.ArmScale);
+        FinishCalibration("CALIBRATION COMPLETE\nEstimated reach - adjust to fit");
+    }
+
+    void CancelCalibration()
+    {
+        if (!m_IsCalibrating)
+            return;
+
+        if (m_CalibrationRoutine != null)
+            StopCoroutine(m_CalibrationRoutine);
+        FinishCalibration("CALIBRATION CANCELLED");
+    }
+
+    void FinishCalibration(string message)
+    {
+        m_IsCalibrating = false;
+        m_CalibrationRoutine = null;
+        SetCalibrationStatus(message);
+        if (!m_MenuVisible)
+            RestoreLocomotionProviders();
+        m_HideCalibrationStatusRoutine = StartCoroutine(HideCalibrationStatus());
+    }
+
+    IEnumerator HideCalibrationStatus()
+    {
+        yield return new WaitForSecondsRealtime(3f);
+        if (m_CalibrationStatusObject != null)
+            m_CalibrationStatusObject.SetActive(false);
+        m_HideCalibrationStatusRoutine = null;
+    }
+
+    void ShowCalibrationStatus()
+    {
+        if (m_CalibrationStatusObject == null)
+        {
+            m_CalibrationStatusObject = new GameObject("Arm Calibration Status", typeof(RectTransform), typeof(Canvas));
+            var statusRect = m_CalibrationStatusObject.GetComponent<RectTransform>();
+            statusRect.sizeDelta = new Vector2(700f, 240f);
+            statusRect.localScale = Vector3.one * 0.001f;
+            var canvas = m_CalibrationStatusObject.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            canvas.worldCamera = m_PlayerCamera;
+            var background = CreateImage("Background", statusRect, Vector2.zero, statusRect.sizeDelta, k_PanelColor);
+            background.raycastTarget = false;
+            var textObject = new GameObject("Status Text", typeof(RectTransform), typeof(Text));
+            textObject.transform.SetParent(statusRect, false);
+            SetRect(textObject.GetComponent<RectTransform>(), Vector2.zero, new Vector2(660f, 210f));
+            m_CalibrationStatusText = textObject.GetComponent<Text>();
+            m_CalibrationStatusText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            m_CalibrationStatusText.fontSize = 34;
+            m_CalibrationStatusText.alignment = TextAnchor.MiddleCenter;
+            m_CalibrationStatusText.color = k_TextColor;
+            m_CalibrationStatusText.raycastTarget = false;
+        }
+
+        var forward = Vector3.ProjectOnPlane(m_PlayerCamera.transform.forward, Vector3.up);
+        if (forward.sqrMagnitude < 0.01f)
+            forward = Vector3.forward;
+        forward.Normalize();
+        m_CalibrationStatusObject.transform.SetPositionAndRotation(
+            m_PlayerCamera.transform.position + forward * 1.3f,
+            Quaternion.LookRotation(forward, Vector3.up));
+        m_CalibrationStatusObject.SetActive(true);
+    }
+
+    void SetCalibrationStatus(string message)
+    {
+        if (m_CalibrationStatusText != null)
+            m_CalibrationStatusText.text = message;
+    }
+
     void SetMenuVisible(bool visible)
     {
         if (m_MenuVisible == visible || m_CanvasGroup == null)
@@ -400,10 +652,13 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
             m_MenuRayHovering = false;
         UpdateMenuRayVisuals();
 
-        if (visible)
-            SuppressLocomotionProviders();
-        else
-            RestoreLocomotionProviders();
+        if (!m_IsCalibrating)
+        {
+            if (visible)
+                SuppressLocomotionProviders();
+            else
+                RestoreLocomotionProviders();
+        }
     }
 
     void SuppressLocomotionProviders()
@@ -493,7 +748,7 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
     Button CreateButton(string name, string label, Vector2 position, Vector2 size, UnityEngine.Events.UnityAction onClick)
     {
-        var image = CreateImage(name, m_CanvasRect, position, size, k_ControlColor);
+        var image = CreateImage(name, m_MenuContent, position, size, k_ControlColor);
         image.raycastTarget = true;
         var button = image.gameObject.AddComponent<Button>();
         button.targetGraphic = image;
@@ -511,7 +766,7 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
     Slider CreateSlider(string name, Vector2 position, float minimum, float maximum, float value, UnityEngine.Events.UnityAction<float> onChanged)
     {
         var sliderObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Slider));
-        sliderObject.transform.SetParent(m_CanvasRect, false);
+        sliderObject.transform.SetParent(m_MenuContent, false);
         var sliderRect = sliderObject.GetComponent<RectTransform>();
         SetRect(sliderRect, position, new Vector2(360f, 28f));
         var sliderBackground = sliderObject.GetComponent<Image>();
@@ -545,7 +800,7 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
     Text CreateText(string name, string content, Vector2 position, Vector2 size, int fontSize, TextAnchor alignment, FontStyle style)
     {
         var textObject = new GameObject(name, typeof(RectTransform), typeof(Text));
-        textObject.transform.SetParent(m_CanvasRect, false);
+        textObject.transform.SetParent(m_MenuContent, false);
         var textRect = textObject.GetComponent<RectTransform>();
         SetRect(textRect, position, size);
 

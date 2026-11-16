@@ -9,6 +9,29 @@ using UnityEngine.Playables;
 [RequireComponent(typeof(Animator), typeof(RigBuilder))]
 public sealed class ArmsVRController : MonoBehaviour
 {
+    const string ArmScaleKey = "PlayerTestScene.ArmScale";
+    public const float MinimumArmScale = 0.65f;
+    public const float MaximumArmScale = 1.4f;
+
+    struct ArmLengthJob : IAnimationJob
+    {
+        public TransformStreamHandle leftElbow;
+        public TransformStreamHandle rightElbow;
+        public TransformStreamHandle leftWrist;
+        public TransformStreamHandle rightWrist;
+        public float scale;
+
+        public void ProcessAnimation(AnimationStream stream)
+        {
+            leftElbow.SetLocalPosition(stream, leftElbow.GetLocalPosition(stream) * scale);
+            rightElbow.SetLocalPosition(stream, rightElbow.GetLocalPosition(stream) * scale);
+            leftWrist.SetLocalPosition(stream, leftWrist.GetLocalPosition(stream) * scale);
+            rightWrist.SetLocalPosition(stream, rightWrist.GetLocalPosition(stream) * scale);
+        }
+
+        public void ProcessRootMotion(AnimationStream stream) { }
+    }
+
     [SerializeField] Transform head;
     [SerializeField] Transform leftController;
     [SerializeField] Transform rightController;
@@ -37,6 +60,7 @@ public sealed class ArmsVRController : MonoBehaviour
     PlayableGraph graph;
     AnimationClipPlayable leftGripPlayable;
     AnimationClipPlayable rightGripPlayable;
+    AnimationScriptPlayable armLengthPlayable;
     AvatarMask leftMask;
     AvatarMask rightMask;
     InputAction leftGrip;
@@ -49,6 +73,12 @@ public sealed class ArmsVRController : MonoBehaviour
     bool hasLeftPose;
     bool hasRightPose;
     Quaternion bodyRotation;
+    float armScale = 1f;
+    float baselineShoulderWidth;
+    float baselineCombinedArmLength;
+    bool baselineCaptured;
+
+    public float ArmScale => armScale;
 
     void OnEnable()
     {
@@ -75,8 +105,21 @@ public sealed class ArmsVRController : MonoBehaviour
             return;
         }
 
-        shoulderCenterInModel = transform.InverseTransformPoint((leftShoulder.position + rightShoulder.position) * 0.5f);
+        if (!baselineCaptured)
+        {
+            shoulderCenterInModel = transform.InverseTransformPoint((leftShoulder.position + rightShoulder.position) * 0.5f);
+            baselineShoulderWidth = Vector3.Distance(leftShoulder.position, rightShoulder.position);
+            baselineCombinedArmLength = Vector3.Distance(leftShoulder.position, leftHand.parent.position) +
+                Vector3.Distance(leftHand.parent.position, leftHand.position) +
+                Vector3.Distance(rightShoulder.position, rightHand.parent.position) +
+                Vector3.Distance(rightHand.parent.position, rightHand.position);
+            baselineCaptured = true;
+        }
         bodyRotation = transform.rotation;
+        var savedScale = PlayerPrefs.GetFloat(ArmScaleKey, 1f);
+        armScale = float.IsNaN(savedScale) || float.IsInfinity(savedScale)
+            ? 1f
+            : Mathf.Clamp(savedScale, MinimumArmScale, MaximumArmScale);
         leftConstraint.weight = 0f;
         rightConstraint.weight = 0f;
         try
@@ -118,8 +161,19 @@ public sealed class ArmsVRController : MonoBehaviour
         }
         layers.SetLayerMaskFromAvatarMask(1, leftMask);
         layers.SetLayerMaskFromAvatarMask(2, rightMask);
+        var lengthJob = new ArmLengthJob
+        {
+            leftElbow = animator.BindStreamTransform(leftHand.parent),
+            rightElbow = animator.BindStreamTransform(rightHand.parent),
+            leftWrist = animator.BindStreamTransform(leftHand),
+            rightWrist = animator.BindStreamTransform(rightHand),
+            scale = armScale,
+        };
+        armLengthPlayable = AnimationScriptPlayable.Create(graph, lengthJob, 1);
+        graph.Connect(layers, 0, armLengthPlayable, 0);
+        armLengthPlayable.SetInputWeight(0, 1f);
         var output = AnimationPlayableOutput.Create(graph, "ArmsVR Grip", animator);
-        output.SetSourcePlayable(layers);
+        output.SetSourcePlayable(armLengthPlayable);
 
         if (!rigBuilder.Build(graph) || rigBuilder.layers.Count == 0 || !rigBuilder.layers[0].IsValid())
         {
@@ -177,8 +231,8 @@ public sealed class ArmsVRController : MonoBehaviour
         transform.rotation = bodyRotation;
         transform.position = head.position + bodyRotation * shoulderOffset - transform.TransformVector(shoulderCenterInModel);
 
-        UpdateTarget(leftController, leftTarget, leftTracked, leftWristPositionOffset, leftWristRotationOffset, ref leftPose, ref hasLeftPose);
-        UpdateTarget(rightController, rightTarget, rightTracked, rightWristPositionOffset, rightWristRotationOffset, ref rightPose, ref hasRightPose);
+        UpdateTarget(leftController, leftTarget, leftTracked, leftWristPositionOffset, Quaternion.LookRotation(Vector3.left, Vector3.forward), leftWristRotationOffset, ref leftPose, ref hasLeftPose);
+        UpdateTarget(rightController, rightTarget, rightTracked, rightWristPositionOffset, Quaternion.LookRotation(Vector3.right, Vector3.forward), rightWristRotationOffset, ref rightPose, ref hasRightPose);
         leftConstraint.weight = hasLeftPose ? 1f : 0f;
         rightConstraint.weight = hasRightPose ? 1f : 0f;
         leftHint.position = leftShoulder.position + bodyRotation * new Vector3(-elbowHintOffset.x, elbowHintOffset.y, elbowHintOffset.z);
@@ -190,11 +244,11 @@ public sealed class ArmsVRController : MonoBehaviour
         graph.Evaluate(Time.deltaTime);
     }
 
-    static void UpdateTarget(Transform controller, Transform target, InputAction tracking, Vector3 positionOffset, Vector3 rotationOffset, ref Pose lastPose, ref bool hasPose)
+    static void UpdateTarget(Transform controller, Transform target, InputAction tracking, Vector3 positionOffset, Quaternion handOrientation, Vector3 rotationOffset, ref Pose lastPose, ref bool hasPose)
     {
         if (tracking.enabled && tracking.IsPressed())
         {
-            lastPose = new Pose(controller.TransformPoint(positionOffset), controller.rotation * Quaternion.Euler(rotationOffset));
+            lastPose = new Pose(controller.TransformPoint(positionOffset), controller.rotation * handOrientation * Quaternion.Euler(rotationOffset));
             hasPose = true;
         }
 
@@ -205,6 +259,102 @@ public sealed class ArmsVRController : MonoBehaviour
     static float ReadGrip(InputAction grip)
     {
         return grip.enabled ? Mathf.Clamp01(grip.ReadValue<float>()) : 0f;
+    }
+
+    public void SetArmScale(float value)
+    {
+        if (float.IsNaN(value) || float.IsInfinity(value))
+            return;
+
+        armScale = Mathf.Clamp(value, MinimumArmScale, MaximumArmScale);
+        if (armLengthPlayable.IsValid())
+        {
+            var job = armLengthPlayable.GetJobData<ArmLengthJob>();
+            job.scale = armScale;
+            armLengthPlayable.SetJobData(job);
+        }
+
+        PlayerPrefs.SetFloat(ArmScaleKey, armScale);
+    }
+
+    public bool TryGetCalibrationSample(out float estimatedScale, out Vector3 leftWrist, out Vector3 rightWrist, out string error)
+    {
+        estimatedScale = 1f;
+        leftWrist = Vector3.zero;
+        rightWrist = Vector3.zero;
+        error = "Tracking unavailable";
+        if (!isActiveAndEnabled || leftTracked == null || rightTracked == null ||
+            !leftTracked.enabled || !rightTracked.enabled || !leftTracked.IsPressed() || !rightTracked.IsPressed())
+            return false;
+
+        if (!IsFinite(baselineCombinedArmLength) || !IsFinite(baselineShoulderWidth) ||
+            baselineCombinedArmLength < 0.1f || baselineShoulderWidth < 0.05f)
+        {
+            error = "Arm rig has invalid proportions";
+            return false;
+        }
+
+        var forward = Vector3.ProjectOnPlane(head.forward, Vector3.up);
+        if (forward.sqrMagnitude < 0.01f)
+        {
+            error = "Look forward";
+            return false;
+        }
+
+        var heading = Quaternion.LookRotation(forward.normalized, Vector3.up);
+        var shoulderCenter = head.position + heading * shoulderOffset;
+        leftWrist = leftController.TransformPoint(leftWristPositionOffset);
+        rightWrist = rightController.TransformPoint(rightWristPositionOffset);
+        if (!IsFinite(shoulderCenter) || !IsFinite(leftWrist) || !IsFinite(rightWrist))
+        {
+            error = "Tracking position invalid";
+            return false;
+        }
+        var leftRelative = Quaternion.Inverse(heading) * (leftWrist - shoulderCenter);
+        var rightRelative = Quaternion.Inverse(heading) * (rightWrist - shoulderCenter);
+        var measuredSpan = rightRelative.x - leftRelative.x;
+        if (leftRelative.x >= -0.2f || rightRelative.x <= 0.2f ||
+            Mathf.Abs(leftRelative.y) > 0.35f || Mathf.Abs(rightRelative.y) > 0.35f ||
+            Mathf.Abs(leftRelative.z) > 0.45f || Mathf.Abs(rightRelative.z) > 0.45f ||
+            measuredSpan < 0.8f || measuredSpan > 2.6f || measuredSpan <= baselineShoulderWidth)
+        {
+            error = "Extend both arms sideways at shoulder height";
+            return false;
+        }
+
+        if (!TryEstimateArmScale(measuredSpan, baselineShoulderWidth, baselineCombinedArmLength, out estimatedScale))
+        {
+            error = "Arm measurement invalid";
+            return false;
+        }
+        error = null;
+        return true;
+    }
+
+    public static bool TryEstimateArmScale(float measuredSpan, float shoulderWidth, float combinedArmLength, out float scale)
+    {
+        scale = 1f;
+        if (!IsFinite(measuredSpan) || !IsFinite(shoulderWidth) || !IsFinite(combinedArmLength) ||
+            measuredSpan < 0.8f || measuredSpan > 2.6f || shoulderWidth < 0.05f ||
+            combinedArmLength < 0.1f || measuredSpan <= shoulderWidth)
+            return false;
+
+        var estimate = (measuredSpan - shoulderWidth) / combinedArmLength;
+        if (!IsFinite(estimate))
+            return false;
+
+        scale = Mathf.Clamp(estimate, MinimumArmScale, MaximumArmScale);
+        return true;
+    }
+
+    static bool IsFinite(float value)
+    {
+        return !float.IsNaN(value) && !float.IsInfinity(value);
+    }
+
+    static bool IsFinite(Vector3 value)
+    {
+        return IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z);
     }
 
     void UseFallbackHands()
