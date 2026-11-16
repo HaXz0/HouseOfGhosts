@@ -91,8 +91,14 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
         m_PlayerCamera = xrOrigin.Camera != null ? xrOrigin.Camera : Camera.main;
         m_LeftWrist = FindChildByName(xrOrigin.transform, "Left Controller");
-        BindHandModel(xrOrigin.transform, "Left Controller", "VR_Hand_Blue_Left");
-        BindHandModel(xrOrigin.transform, "Right Controller", "VR_Hand_Blue_Right");
+        var arms = xrOrigin.GetComponentInChildren<ArmsVRController>(true);
+        if (arms == null || !arms.isActiveAndEnabled)
+        {
+            BindHandModel(xrOrigin.transform, "Left Controller", "VR_Hand_Blue_Left");
+            BindHandModel(xrOrigin.transform, "Right Controller", "VR_Hand_Blue_Right");
+        }
+        HidePokeVisuals(xrOrigin.transform, "Left Controller");
+        HidePokeVisuals(xrOrigin.transform, "Right Controller");
         ConfigureMenuRay(xrOrigin.transform);
         m_InputManagers = FindObjectsByType<ControllerInputActionManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         m_MoveProviders = FindObjectsByType<DynamicMoveProvider>(FindObjectsInactive.Include, FindObjectsSortMode.None);
@@ -599,7 +605,13 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         hand.transform.localPosition = Vector3.zero;
         hand.transform.localRotation = Quaternion.identity;
         hand.transform.localScale = Vector3.one;
+    }
 
+    void HidePokeVisuals(Transform xrOrigin, string controllerName)
+    {
+        var controller = FindChildByName(xrOrigin, controllerName);
+        if (controller == null)
+            return;
         var pokeInteractor = FindChildByName(controller, "Poke Interactor");
         if (pokeInteractor != null)
         {

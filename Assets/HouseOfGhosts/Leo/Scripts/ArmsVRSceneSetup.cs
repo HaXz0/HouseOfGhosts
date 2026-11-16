@@ -1,0 +1,216 @@
+#if UNITY_EDITOR
+using System;
+using Unity.XR.CoreUtils;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.Animations.Rigging;
+using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
+
+[InitializeOnLoad]
+static class ArmsVRSceneSetup
+{
+    const string ScenePath = "Assets/HouseOfGhosts/Scenes/LeoScenes/PlayerTestScene.unity";
+    const string PrefabPath = "Assets/HouseOfGhosts/Ferron/Models/Prefabs/ArmsVR.prefab";
+    const string ActionsPath = "Assets/Samples/XR Interaction Toolkit/3.5.1/Starter Assets/XRI Default Input Actions.inputactions";
+    const string LeftClipPath = "Assets/HouseOfGhosts/Ferron/Models/Animations/Armature_Squeeze.L.anim";
+    const string RightClipPath = "Assets/HouseOfGhosts/Ferron/Models/Animations/Armature_Squeeze.R.anim";
+
+    static ArmsVRSceneSetup()
+    {
+        EditorSceneManager.sceneOpened += OnSceneOpened;
+        EditorApplication.delayCall += TrySetupOpenScene;
+    }
+
+    static void OnSceneOpened(Scene scene, OpenSceneMode mode)
+    {
+        if (scene.path == ScenePath)
+            EditorApplication.delayCall += TrySetupOpenScene;
+    }
+
+    [MenuItem("Tools/House of Ghosts/Set Up ArmsVR")]
+    static void SetUpFromMenu()
+    {
+        var scene = SceneManager.GetSceneByPath(ScenePath);
+        if (!scene.IsValid() || !scene.isLoaded)
+        {
+            Debug.LogWarning("Open PlayerTestScene before setting up ArmsVR.");
+            return;
+        }
+
+        TrySetupOpenScene();
+    }
+
+    static void TrySetupOpenScene()
+    {
+        if (EditorApplication.isPlayingOrWillChangePlaymode)
+            return;
+
+        var scene = SceneManager.GetSceneByPath(ScenePath);
+        if (!scene.IsValid() || !scene.isLoaded)
+            return;
+
+        XROrigin origin = null;
+        foreach (var root in scene.GetRootGameObjects())
+        {
+            var candidate = root.GetComponentInChildren<XROrigin>(true);
+            if (candidate == null)
+                continue;
+            if (origin != null)
+            {
+                Debug.LogError("ArmsVR setup found multiple XR Origins; no scene changes were made.");
+                return;
+            }
+            origin = candidate;
+        }
+
+        if (origin == null || origin.Camera == null || origin.GetComponentInChildren<ArmsVRController>(true) != null)
+            return;
+
+        var leftController = FindNamedChild(origin.transform, "Left Controller");
+        var rightController = FindNamedChild(origin.transform, "Right Controller");
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+        var actions = AssetDatabase.LoadAssetAtPath<InputActionAsset>(ActionsPath);
+        var leftClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(LeftClipPath);
+        var rightClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(RightClipPath);
+        if (leftController == null || rightController == null || prefab == null || actions == null ||
+            leftClip == null || rightClip == null ||
+            actions.FindAction("XRI Left Interaction/Select Value") == null ||
+            actions.FindAction("XRI Right Interaction/Select Value") == null ||
+            actions.FindAction("XRI Left/Is Tracked") == null || actions.FindAction("XRI Right/Is Tracked") == null)
+        {
+            Debug.LogError("ArmsVR setup could not find the prefab, controllers, input actions, or grip clips; existing hands were left unchanged.");
+            return;
+        }
+
+        var wasDirty = scene.isDirty;
+        var arms = PrefabUtility.InstantiatePrefab(prefab, scene) as GameObject;
+        if (arms == null)
+        {
+            Debug.LogError("ArmsVR setup could not instantiate the prefab; existing hands were left unchanged.");
+            return;
+        }
+
+        Undo.RegisterCreatedObjectUndo(arms, "Set up ArmsVR");
+        try
+        {
+            Undo.SetTransformParent(arms.transform, origin.transform, "Set up ArmsVR");
+            arms.transform.localPosition = Vector3.zero;
+            arms.transform.localRotation = Quaternion.identity;
+            var leftShoulder = arms.transform.Find("Armature/UpperArm.L");
+            var leftElbow = arms.transform.Find("Armature/UpperArm.L/LowerArm.L");
+            var leftHand = arms.transform.Find("Armature/UpperArm.L/LowerArm.L/Hand.L");
+            var rightShoulder = arms.transform.Find("Armature/UpperArm.R");
+            var rightElbow = arms.transform.Find("Armature/UpperArm.R/LowerArm.R");
+            var rightHand = arms.transform.Find("Armature/UpperArm.R/LowerArm.R/Hand.R");
+            if (leftShoulder == null || leftElbow == null || leftHand == null || rightShoulder == null ||
+                rightElbow == null || rightHand == null || arms.GetComponentInChildren<SkinnedMeshRenderer>(true) == null ||
+                leftHand.childCount == 0 || rightHand.childCount == 0)
+                throw new InvalidOperationException("The prefab is missing a skinned arm, finger hierarchy, or one of its shoulder/elbow/hand bones.");
+
+            var animator = arms.GetComponent<Animator>();
+            if (animator == null)
+                animator = Undo.AddComponent<Animator>(arms);
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            var rigBuilder = arms.GetComponent<RigBuilder>();
+            if (rigBuilder == null)
+                rigBuilder = Undo.AddComponent<RigBuilder>(arms);
+            rigBuilder.enabled = false;
+
+            var rigObject = new GameObject("Arm IK Rig");
+            rigObject.transform.SetParent(arms.transform, false);
+            var rig = rigObject.AddComponent<Rig>();
+            var leftTarget = CreateTarget("Left Wrist Target", arms.transform, leftHand);
+            var rightTarget = CreateTarget("Right Wrist Target", arms.transform, rightHand);
+            var leftHint = CreateTarget("Left Elbow Hint", arms.transform, leftElbow);
+            var rightHint = CreateTarget("Right Elbow Hint", arms.transform, rightElbow);
+            var leftConstraint = CreateConstraint("Left Arm IK", rigObject.transform, leftShoulder, leftElbow, leftHand, leftTarget, leftHint);
+            var rightConstraint = CreateConstraint("Right Arm IK", rigObject.transform, rightShoulder, rightElbow, rightHand, rightTarget, rightHint);
+            if (!leftConstraint.IsValid() || !rightConstraint.IsValid())
+                throw new InvalidOperationException("One of the two-bone IK constraints is invalid.");
+
+            rigBuilder.layers.Clear();
+            rigBuilder.layers.Add(new RigLayer(rig));
+            var driver = Undo.AddComponent<ArmsVRController>(arms);
+            var settings = new SerializedObject(driver);
+            SetReference(settings, "head", origin.Camera.transform);
+            SetReference(settings, "leftController", leftController);
+            SetReference(settings, "rightController", rightController);
+            SetReference(settings, "leftShoulder", leftShoulder);
+            SetReference(settings, "rightShoulder", rightShoulder);
+            SetReference(settings, "leftHand", leftHand);
+            SetReference(settings, "rightHand", rightHand);
+            SetReference(settings, "leftTarget", leftTarget);
+            SetReference(settings, "rightTarget", rightTarget);
+            SetReference(settings, "leftHint", leftHint);
+            SetReference(settings, "rightHint", rightHint);
+            SetReference(settings, "leftConstraint", leftConstraint);
+            SetReference(settings, "rightConstraint", rightConstraint);
+            SetReference(settings, "actions", actions);
+            SetReference(settings, "leftGripClip", leftClip);
+            SetReference(settings, "rightGripClip", rightClip);
+            settings.ApplyModifiedProperties();
+
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                if (root.name != "VR_Hand_Blue_Left" && root.name != "VR_Hand_Blue_Right")
+                    continue;
+                Undo.RecordObject(root, "Replace Blue Hand Visual");
+                root.SetActive(false);
+            }
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            if (wasDirty)
+                Debug.Log("ArmsVR was added to PlayerTestScene. Save the scene to keep it.", arms);
+            else if (!EditorSceneManager.SaveScene(scene))
+                Debug.LogWarning("ArmsVR was added, but the scene could not be saved.", arms);
+        }
+        catch (Exception exception)
+        {
+            Undo.DestroyObjectImmediate(arms);
+            Debug.LogError("ArmsVR setup failed; existing hands were left unchanged: " + exception.Message);
+        }
+    }
+
+    static Transform FindNamedChild(Transform parent, string name)
+    {
+        foreach (var child in parent.GetComponentsInChildren<Transform>(true))
+            if (child.name == name)
+                return child;
+        return null;
+    }
+
+    static Transform CreateTarget(string name, Transform parent, Transform poseSource)
+    {
+        var target = new GameObject(name).transform;
+        target.SetParent(parent, false);
+        target.SetPositionAndRotation(poseSource.position, poseSource.rotation);
+        return target;
+    }
+
+    static TwoBoneIKConstraint CreateConstraint(string name, Transform parent, Transform root, Transform mid, Transform tip, Transform target, Transform hint)
+    {
+        var constraintObject = new GameObject(name);
+        constraintObject.transform.SetParent(parent, false);
+        var constraint = constraintObject.AddComponent<TwoBoneIKConstraint>();
+        constraint.data.root = root;
+        constraint.data.mid = mid;
+        constraint.data.tip = tip;
+        constraint.data.target = target;
+        constraint.data.hint = hint;
+        constraint.data.targetPositionWeight = 1f;
+        constraint.data.targetRotationWeight = 1f;
+        constraint.data.hintWeight = 1f;
+        return constraint;
+    }
+
+    static void SetReference(SerializedObject settings, string propertyName, UnityEngine.Object value)
+    {
+        var property = settings.FindProperty(propertyName);
+        if (property == null)
+            throw new InvalidOperationException("Missing ArmsVR driver field: " + propertyName);
+        property.objectReferenceValue = value;
+    }
+}
+#endif
