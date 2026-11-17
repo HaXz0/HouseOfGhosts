@@ -4779,6 +4779,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: ArmsVR
       objectReference: {fileID: 0}
+    - target: {fileID: 2229199839953736600, guid: 5b1394acbe1b3a0458ae309828e6ef15, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

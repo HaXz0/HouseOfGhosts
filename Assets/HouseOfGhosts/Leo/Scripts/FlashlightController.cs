@@ -4,6 +4,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Inputs.Haptics;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 [DisallowMultipleComponent]
 public sealed class FlashlightController : MonoBehaviour
@@ -179,6 +180,9 @@ public sealed class FlashlightController : MonoBehaviour
 
     void PlayPickupHaptic(SelectEnterEventArgs args)
     {
+        if (args.interactorObject is XRSocketInteractor)
+            return;
+
         var interactorComponent = args.interactorObject as Component;
         if (interactorComponent == null)
             return;
@@ -191,6 +195,12 @@ public sealed class FlashlightController : MonoBehaviour
     {
         if (m_Beam != null)
             m_Beam.enabled = !m_Beam.enabled;
+    }
+
+    public void SetBeamEnabled(bool beamEnabled)
+    {
+        if (m_Beam != null)
+            m_Beam.enabled = beamEnabled;
     }
 
     void SetUpModeSwitch()
@@ -214,12 +224,21 @@ public sealed class FlashlightController : MonoBehaviour
         m_ModeAction.performed += OnModePressed;
     }
 
-    void EnableModeInput(SelectEnterEventArgs args) => m_ModeAction?.Enable();
+    void EnableModeInput(SelectEnterEventArgs args)
+    {
+        if (!(args.interactorObject is XRSocketInteractor))
+            m_ModeAction?.Enable();
+    }
 
     void DisableModeInput(SelectExitEventArgs args)
     {
-        if (!m_Interactable.isSelected)
-            m_ModeAction?.Disable();
+        foreach (var interactor in m_Interactable.interactorsSelecting)
+        {
+            if (!(interactor is XRSocketInteractor))
+                return;
+        }
+
+        m_ModeAction?.Disable();
     }
 
     void OnModePressed(InputAction.CallbackContext context)
