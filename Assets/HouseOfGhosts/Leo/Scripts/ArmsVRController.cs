@@ -68,6 +68,7 @@ public sealed class ArmsVRController : MonoBehaviour
     AnimationScriptPlayable armLengthPlayable;
     AvatarMask leftMask;
     AvatarMask rightMask;
+    Avatar runtimeAvatar;
     InputAction leftGrip;
     InputAction rightGrip;
     InputAction leftTracked;
@@ -86,6 +87,10 @@ public sealed class ArmsVRController : MonoBehaviour
     float baselineLeftArmLength;
     float baselineRightArmLength;
     bool baselineCaptured;
+    bool ownsLeftGripAction;
+    bool ownsRightGripAction;
+    bool ownsLeftTrackingAction;
+    bool ownsRightTrackingAction;
 
     public float LeftArmScale => leftArmScale;
     public float RightArmScale => rightArmScale;
@@ -106,6 +111,20 @@ public sealed class ArmsVRController : MonoBehaviour
             return;
         }
 
+        if (animator.avatar == null || !animator.avatar.isValid)
+        {
+            runtimeAvatar = AvatarBuilder.BuildGenericAvatar(gameObject, string.Empty);
+            if (runtimeAvatar == null || !runtimeAvatar.isValid)
+            {
+                Debug.LogError("ArmsVR could not build a Generic Avatar; finger animations cannot bind to the model.", this);
+                UseFallbackHands();
+                return;
+            }
+
+            animator.avatar = runtimeAvatar;
+            animator.Rebind();
+        }
+
         leftGrip = actions.FindAction("XRI Left Interaction/Select Value");
         rightGrip = actions.FindAction("XRI Right Interaction/Select Value");
         leftTracked = actions.FindAction("XRI Left/Is Tracked");
@@ -116,6 +135,11 @@ public sealed class ArmsVRController : MonoBehaviour
             UseFallbackHands();
             return;
         }
+
+        EnableActionIfNeeded(leftGrip, ref ownsLeftGripAction);
+        EnableActionIfNeeded(rightGrip, ref ownsRightGripAction);
+        EnableActionIfNeeded(leftTracked, ref ownsLeftTrackingAction);
+        EnableActionIfNeeded(rightTracked, ref ownsRightTrackingAction);
 
         if (!baselineCaptured)
         {
@@ -306,6 +330,15 @@ public sealed class ArmsVRController : MonoBehaviour
         return grip.enabled ? Mathf.Clamp01(grip.ReadValue<float>()) : 0f;
     }
 
+    static void EnableActionIfNeeded(InputAction action, ref bool enabledHere)
+    {
+        if (action.enabled)
+            return;
+
+        action.Enable();
+        enabledHere = true;
+    }
+
     public void SetArmScale(float value)
     {
         SetArmScales(value, value);
@@ -475,6 +508,14 @@ public sealed class ArmsVRController : MonoBehaviour
 
     void OnDisable()
     {
+        DisableActionIfOwned(leftGrip, ownsLeftGripAction);
+        DisableActionIfOwned(rightGrip, ownsRightGripAction);
+        DisableActionIfOwned(leftTracked, ownsLeftTrackingAction);
+        DisableActionIfOwned(rightTracked, ownsRightTrackingAction);
+        ownsLeftGripAction = false;
+        ownsRightGripAction = false;
+        ownsLeftTrackingAction = false;
+        ownsRightTrackingAction = false;
         if (rigBuilder != null)
             rigBuilder.Clear();
         if (graph.IsValid())
@@ -483,5 +524,18 @@ public sealed class ArmsVRController : MonoBehaviour
             Destroy(leftMask);
         if (rightMask != null)
             Destroy(rightMask);
+        if (runtimeAvatar != null)
+        {
+            if (animator != null && animator.avatar == runtimeAvatar)
+                animator.avatar = null;
+            Destroy(runtimeAvatar);
+            runtimeAvatar = null;
+        }
+    }
+
+    static void DisableActionIfOwned(InputAction action, bool enabledHere)
+    {
+        if (enabledHere && action != null && action.enabled)
+            action.Disable();
     }
 }

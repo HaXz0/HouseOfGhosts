@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using System.Linq;
 using Unity.XR.CoreUtils;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -13,6 +14,8 @@ static class ArmsVRSceneSetup
 {
     const string ScenePath = "Assets/HouseOfGhosts/Scenes/LeoScenes/PlayerTestScene.unity";
     const string PrefabPath = "Assets/HouseOfGhosts/Ferron/Models/Prefabs/ArmsVR.prefab";
+    const string ModelPath = "Assets/HouseOfGhosts/Ferron/Models/Models/ArmsVR.fbx";
+    const string GeneratedAvatarPath = "Assets/HouseOfGhosts/Leo/Prefabs/ArmsVR_Generic_Avatar.asset";
     const string ActionsPath = "Assets/Samples/XR Interaction Toolkit/3.5.1/Starter Assets/XRI Default Input Actions.inputactions";
     const string LeftClipPath = "Assets/HouseOfGhosts/Ferron/Models/Animations/Armature_Squeeze.L.anim";
     const string RightClipPath = "Assets/HouseOfGhosts/Ferron/Models/Animations/Armature_Squeeze.R.anim";
@@ -65,8 +68,36 @@ static class ArmsVRSceneSetup
             origin = candidate;
         }
 
-        if (origin == null || origin.Camera == null || origin.GetComponentInChildren<ArmsVRController>(true) != null)
+        if (origin == null || origin.Camera == null)
             return;
+
+        var existingArms = origin.GetComponentInChildren<ArmsVRController>(true);
+        if (existingArms != null)
+        {
+            var existingAnimator = existingArms.GetComponent<Animator>();
+            if (existingAnimator != null && existingAnimator.avatar == null)
+            {
+                var sceneWasDirty = scene.isDirty;
+                Undo.RecordObject(existingAnimator, "Assign ArmsVR Avatar");
+                existingAnimator.avatar = ResolveAvatar(existingArms.gameObject);
+                if (existingAnimator.avatar == null)
+                {
+                    Debug.LogError("Could not build a Generic Avatar for ArmsVR; the squeeze clips will not play.", existingArms);
+                    return;
+                }
+                EditorUtility.SetDirty(existingAnimator);
+                EditorSceneManager.MarkSceneDirty(scene);
+                if (sceneWasDirty)
+                    Debug.Log("Assigned the ArmsVR Avatar. Save PlayerTestScene to keep the animation setup.", existingArms);
+                else
+                    EditorSceneManager.SaveScene(scene);
+            }
+            else if (existingAnimator != null && existingAnimator.avatar == null)
+            {
+                Debug.LogError("The ArmsVR Animator has no Avatar; the squeeze clips cannot play.", existingArms);
+            }
+            return;
+        }
 
         var leftController = FindNamedChild(origin.transform, "Left Controller");
         var rightController = FindNamedChild(origin.transform, "Right Controller");
@@ -112,6 +143,9 @@ static class ArmsVRSceneSetup
             var animator = arms.GetComponent<Animator>();
             if (animator == null)
                 animator = Undo.AddComponent<Animator>(arms);
+            animator.avatar = ResolveAvatar(arms);
+            if (animator.avatar == null)
+                throw new InvalidOperationException("Could not build a Generic Avatar for ArmsVR.");
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             var rigBuilder = arms.GetComponent<RigBuilder>();
             if (rigBuilder == null)
@@ -179,6 +213,30 @@ static class ArmsVRSceneSetup
             if (child.name == name)
                 return child;
         return null;
+    }
+
+    static Avatar ResolveAvatar(GameObject armsRoot)
+    {
+        var avatar = AssetDatabase.LoadAssetAtPath<Avatar>(GeneratedAvatarPath);
+        if (avatar != null && avatar.isValid)
+            return avatar;
+
+        avatar = AssetDatabase.LoadAllAssetsAtPath(ModelPath).OfType<Avatar>().FirstOrDefault(candidate => candidate.isValid);
+        if (avatar != null)
+            return avatar;
+
+        var generated = AvatarBuilder.BuildGenericAvatar(armsRoot, string.Empty);
+        if (generated == null || !generated.isValid)
+        {
+            if (generated != null)
+                UnityEngine.Object.DestroyImmediate(generated);
+            return null;
+        }
+
+        generated.name = "ArmsVR Generic Avatar";
+        AssetDatabase.CreateAsset(generated, GeneratedAvatarPath);
+        AssetDatabase.SaveAssets();
+        return AssetDatabase.LoadAssetAtPath<Avatar>(GeneratedAvatarPath);
     }
 
     static Transform CreateTarget(string name, Transform parent, Transform poseSource)
