@@ -765,7 +765,7 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         forward.Normalize();
         m_CalibrationStatusObject.transform.SetPositionAndRotation(
             m_PlayerCamera.transform.position + forward * 1.3f,
-            Quaternion.LookRotation(-forward, Vector3.up));
+            Quaternion.LookRotation(forward, Vector3.up));
     }
 
     void SetCalibrationStatus(string message)

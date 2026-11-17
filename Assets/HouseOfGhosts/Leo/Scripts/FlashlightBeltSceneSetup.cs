@@ -8,27 +8,47 @@ using UnityEngine.SceneManagement;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
-// One-time setup for the invisible belt in PlayerTestScene.
-// Run it from Tools > House of Ghosts > Set Up Flashlight Belt, then save the scene.
+// Sets up the invisible belt in PlayerTestScene automatically when the scene is open
+// (same approach as ArmsVRSceneSetup). Can also be run from Tools > House of Ghosts > Set Up Flashlight Belt.
+[InitializeOnLoad]
 static class FlashlightBeltSceneSetup
 {
     const string ScenePath = "Assets/HouseOfGhosts/Scenes/LeoScenes/PlayerTestScene.unity";
     static readonly Vector3 k_LeftHipPosition = new Vector3(-0.18f, 0f, 0.04f);
     static readonly Vector3 k_HangingRotation = new Vector3(90f, 0f, 0f);
 
+    static FlashlightBeltSceneSetup()
+    {
+        EditorSceneManager.sceneOpened += OnSceneOpened;
+        EditorApplication.delayCall += () => SetUp(false);
+    }
+
+    static void OnSceneOpened(Scene scene, OpenSceneMode mode)
+    {
+        if (scene.path == ScenePath)
+            EditorApplication.delayCall += () => SetUp(false);
+    }
+
     [MenuItem("Tools/House of Ghosts/Set Up Flashlight Belt")]
-    static void SetUp()
+    static void SetUpFromMenu()
+    {
+        SetUp(true);
+    }
+
+    static void SetUp(bool fromMenu)
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode)
         {
-            Debug.LogWarning("Exit Play Mode before setting up the flashlight belt.");
+            if (fromMenu)
+                Debug.LogWarning("Exit Play Mode before setting up the flashlight belt.");
             return;
         }
 
         var scene = SceneManager.GetSceneByPath(ScenePath);
         if (!scene.IsValid() || !scene.isLoaded)
         {
-            Debug.LogWarning("Open PlayerTestScene before setting up the flashlight belt.");
+            if (fromMenu)
+                Debug.LogWarning("Open PlayerTestScene before setting up the flashlight belt.");
             return;
         }
 
@@ -36,6 +56,17 @@ static class FlashlightBeltSceneSetup
         var flashlight = FindSingle<FlashlightController>(scene, "flashlight");
         if (origin == null || flashlight == null)
             return;
+
+        var existingSlot = origin.GetComponentInChildren<BeltSlot>(true);
+        if (existingSlot != null)
+        {
+            if (fromMenu)
+            {
+                Debug.Log("The flashlight belt is already set up.", existingSlot);
+                Selection.activeGameObject = existingSlot.gameObject;
+            }
+            return;
+        }
 
         if (origin.Camera == null)
         {
@@ -50,13 +81,7 @@ static class FlashlightBeltSceneSetup
             return;
         }
 
-        var existingSlot = origin.GetComponentInChildren<BeltSlot>(true);
-        if (existingSlot != null)
-        {
-            Debug.Log("The flashlight belt is already set up.", existingSlot);
-            Selection.activeGameObject = existingSlot.gameObject;
-            return;
-        }
+        var sceneWasDirty = scene.isDirty;
 
         Undo.SetCurrentGroupName("Set Up Flashlight Belt");
         var undoGroup = Undo.GetCurrentGroup();
@@ -98,8 +123,13 @@ static class FlashlightBeltSceneSetup
         EditorUtility.SetDirty(socket);
         EditorUtility.SetDirty(slot);
         EditorSceneManager.MarkSceneDirty(scene);
-        Selection.activeGameObject = slotObject;
-        Debug.Log("Flashlight belt added to the left hip. Save PlayerTestScene to keep it.", slotObject);
+        if (fromMenu)
+            Selection.activeGameObject = slotObject;
+
+        if (!sceneWasDirty && EditorSceneManager.SaveScene(scene))
+            Debug.Log("Flashlight belt added to the left hip and PlayerTestScene was saved.", slotObject);
+        else
+            Debug.Log("Flashlight belt added to the left hip. Save PlayerTestScene to keep it.", slotObject);
     }
 
     static T FindSingle<T>(Scene scene, string label) where T : Component

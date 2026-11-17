@@ -17,6 +17,11 @@ public sealed class ArmsVRController : MonoBehaviour
     public const float MaximumArmScale = 1.4f;
     const float k_TrackingFadeSeconds = 0.16f;
 
+    // Base hand pose relative to each controller. The hand bone's fingers point along its local Y axis,
+    // so Y follows the controller's forward and the palm faces inward.
+    static readonly Quaternion k_LeftHandOrientation = Quaternion.LookRotation(Vector3.left, Vector3.forward);
+    static readonly Quaternion k_RightHandOrientation = Quaternion.LookRotation(Vector3.right, Vector3.forward);
+
     struct ArmLengthJob : IAnimationJob
     {
         public TransformStreamHandle leftElbow;
@@ -268,8 +273,8 @@ public sealed class ArmsVRController : MonoBehaviour
         transform.rotation = bodyRotation;
         transform.position = head.position + bodyRotation * shoulderOffset - transform.TransformVector(shoulderCenterInModel);
 
-        UpdateTarget(leftController, leftTarget, leftTracked, leftWristPositionOffset, Quaternion.LookRotation(Vector3.right, Vector3.forward), leftWristRotationOffset, ref leftPose, ref hasLeftPose, ref leftConstraintWeight);
-        UpdateTarget(rightController, rightTarget, rightTracked, rightWristPositionOffset, Quaternion.LookRotation(Vector3.left, Vector3.forward), rightWristRotationOffset, ref rightPose, ref hasRightPose, ref rightConstraintWeight);
+        UpdateTarget(leftController, leftTarget, leftTracked, leftWristPositionOffset, k_LeftHandOrientation, leftWristRotationOffset, ref leftPose, ref hasLeftPose, ref leftConstraintWeight);
+        UpdateTarget(rightController, rightTarget, rightTracked, rightWristPositionOffset, k_RightHandOrientation, rightWristRotationOffset, ref rightPose, ref hasRightPose, ref rightConstraintWeight);
         leftConstraint.weight = leftConstraintWeight;
         rightConstraint.weight = rightConstraintWeight;
         leftTarget.position = SoftenReach(leftShoulder.position, leftHand.parent.position, leftHand.position, leftTarget.position);
