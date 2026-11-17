@@ -65,6 +65,16 @@ public sealed class ArmsVRController : MonoBehaviour
     [SerializeField] Vector3 leftWristRotationOffset;
     [SerializeField] Vector3 rightWristRotationOffset;
 
+    [Header("Arm Feel")]
+    [Tooltip("How much the elbow follows the wrist's rotation (0 = body only, 1 = wrist only).")]
+    [SerializeField, Range(0f, 1f)] float wristDrivenElbow = 0.6f;
+    [Tooltip("How far the elbow sits below the forearm, relative to the back of the hand.")]
+    [SerializeField] float elbowDropBelowForearm = 0.12f;
+    [Tooltip("Higher = hands follow the controllers more tightly. Lower = heavier arms.")]
+    [SerializeField, Range(5f, 60f)] float handPositionSharpness = 22f;
+    [SerializeField, Range(5f, 60f)] float handRotationSharpness = 16f;
+    [SerializeField, Range(2f, 40f)] float elbowSharpness = 10f;
+
     Animator animator;
     RigBuilder rigBuilder;
     PlayableGraph graph;
@@ -83,6 +93,10 @@ public sealed class ArmsVRController : MonoBehaviour
     Pose rightPose;
     bool hasLeftPose;
     bool hasRightPose;
+    Vector3 leftHintLocal;
+    Vector3 rightHintLocal;
+    bool hasLeftHint;
+    bool hasRightHint;
     Quaternion bodyRotation;
     float leftArmScale = 1f;
     float rightArmScale = 1f;
@@ -279,8 +293,8 @@ public sealed class ArmsVRController : MonoBehaviour
         rightConstraint.weight = rightConstraintWeight;
         leftTarget.position = SoftenReach(leftShoulder.position, leftHand.parent.position, leftHand.position, leftTarget.position);
         rightTarget.position = SoftenReach(rightShoulder.position, rightHand.parent.position, rightHand.position, rightTarget.position);
-        UpdateElbowHint(leftShoulder, leftTarget, leftHint, -1f);
-        UpdateElbowHint(rightShoulder, rightTarget, rightHint, 1f);
+        UpdateElbowHint(leftShoulder, leftHand, leftTarget, leftHint, leftController.parent, -1f, ref leftHintLocal, ref hasLeftHint);
+        UpdateElbowHint(rightShoulder, rightHand, rightTarget, rightHint, rightController.parent, 1f, ref rightHintLocal, ref hasRightHint);
 
         leftGripPlayable.SetTime(ReadGrip(leftGrip) * Math.Max(0d, leftGripClip.length - 0.0001d));
         rightGripPlayable.SetTime(ReadGrip(rightGrip) * Math.Max(0d, rightGripClip.length - 0.0001d));
@@ -288,20 +302,46 @@ public sealed class ArmsVRController : MonoBehaviour
         graph.Evaluate(Time.deltaTime);
     }
 
-    void UpdateTarget(Transform controller, Transform target, InputAction tracking, Vector3 positionOffset, Quaternion handOrientation, Vector3 rotationOffset, ref Pose lastPose, ref bool hasPose, ref float constraintWeight)
+    // The pose is smoothed in the controllers' parent space (inside the XR Origin), so walking,
+    // teleporting and snap turning never make the arms trail behind the player.
+    void UpdateTarget(Transform controller, Transform target, InputAction tracking, Vector3 positionOffset, Quaternion handOrientation, Vector3 rotationOffset, ref Pose smoothedLocalPose, ref bool hasPose, ref float constraintWeight)
     {
+        var space = controller.parent;
         var tracked = tracking.enabled && tracking.IsPressed();
         if (tracked)
         {
-            lastPose = new Pose(controller.TransformPoint(positionOffset), controller.rotation * handOrientation * Quaternion.Euler(rotationOffset));
+            var worldPosition = controller.TransformPoint(positionOffset);
+            var worldRotation = controller.rotation * handOrientation * Quaternion.Euler(rotationOffset);
+            var localPosition = space != null ? space.InverseTransformPoint(worldPosition) : worldPosition;
+            var localRotation = space != null ? Quaternion.Inverse(space.rotation) * worldRotation : worldRotation;
+
+            if (!hasPose)
+            {
+                smoothedLocalPose = new Pose(localPosition, localRotation);
+            }
+            else
+            {
+                smoothedLocalPose.position = Vector3.Lerp(smoothedLocalPose.position, localPosition, SmoothingBlend(handPositionSharpness));
+                smoothedLocalPose.rotation = Quaternion.Slerp(smoothedLocalPose.rotation, localRotation, SmoothingBlend(handRotationSharpness));
+            }
+
             hasPose = true;
         }
 
         if (hasPose)
-            target.SetPositionAndRotation(lastPose.position, lastPose.rotation);
+        {
+            var position = space != null ? space.TransformPoint(smoothedLocalPose.position) : smoothedLocalPose.position;
+            var rotation = space != null ? space.rotation * smoothedLocalPose.rotation : smoothedLocalPose.rotation;
+            target.SetPositionAndRotation(position, rotation);
+        }
 
         var desiredWeight = tracked && hasPose ? 1f : 0f;
         constraintWeight = Mathf.MoveTowards(constraintWeight, desiredWeight, Time.deltaTime / k_TrackingFadeSeconds);
+    }
+
+    static float SmoothingBlend(float sharpness)
+    {
+        return 1f - Mathf.Exp(-sharpness * Time.deltaTime);
     }
 
     Vector3 SoftenReach(Vector3 root, Vector3 mid, Vector3 tip, Vector3 desired)
@@ -321,13 +361,27 @@ public sealed class ArmsVRController : MonoBehaviour
         return root + offset / distance * Mathf.Min(softenedDistance, maximumReach * 0.98f);
     }
 
-    void UpdateElbowHint(Transform shoulder, Transform target, Transform hint, float side)
+    void UpdateElbowHint(Transform shoulder, Transform hand, Transform target, Transform hint, Transform space, float side, ref Vector3 smoothedLocalHint, ref bool hasHint)
     {
         var shoulderToTarget = target.position - shoulder.position;
         var lateral = bodyRotation * Vector3.right * side;
         var backward = -(bodyRotation * Vector3.forward);
-        hint.position = shoulder.position + shoulderToTarget * 0.4f + lateral * elbowHintOffset.x +
+        var bodyHint = shoulder.position + shoulderToTarget * 0.4f + lateral * elbowHintOffset.x +
             Vector3.down * Mathf.Abs(elbowHintOffset.y) + backward * Mathf.Abs(elbowHintOffset.z);
+
+        // The fingers point along the hand's local Y axis, so the forearm runs the opposite way.
+        // Below the forearm is +X for the left hand and -X for the right hand. Rolling the palm down
+        // therefore swings the elbow outward, and rolling it up tucks the elbow in.
+        var forearmDirection = target.rotation * Vector3.down;
+        var belowForearm = target.rotation * Vector3.right * -side;
+        var forearmLength = Vector3.Distance(hand.parent.position, hand.position);
+        var wristHint = target.position + forearmDirection * forearmLength + belowForearm * elbowDropBelowForearm;
+
+        var desiredHint = Vector3.Lerp(bodyHint, wristHint, wristDrivenElbow);
+        var localHint = space != null ? space.InverseTransformPoint(desiredHint) : desiredHint;
+        smoothedLocalHint = hasHint ? Vector3.Lerp(smoothedLocalHint, localHint, SmoothingBlend(elbowSharpness)) : localHint;
+        hasHint = true;
+        hint.position = space != null ? space.TransformPoint(smoothedLocalHint) : smoothedLocalHint;
     }
 
     static float ReadGrip(InputAction grip)
