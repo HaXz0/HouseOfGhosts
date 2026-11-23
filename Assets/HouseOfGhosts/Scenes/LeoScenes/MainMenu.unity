@@ -4632,28 +4632,25 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'KAMER VOL SPOKEN
+  m_text: 'HOUSE OF GHOSTS
 
     <size=70%>A student VR project</size>
 
 
     PROGRAMMING
 
-    <size=80%>Name
+    <size=80%>Leo
+    van Dalfsen
 
-    Name</size>
-
-
-    ART
-    & DESIGN
-
-    <size=80%>Name
-
-    Name</size>
+    Khamid MinkailAchmedMohammed</size>
 
 
-    <size=60%>(Edit this text
-    on Door Main Menu > Credits Page > Credits Text)</size>'
+    ART & DESIGN
+
+    <size=80%>Ferron
+    Wennemars
+
+    Pascal Drenth</size>'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -5679,7 +5676,7 @@ RectTransform:
   m_GameObject: {fileID: 994101158}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 14.089069}
-  m_LocalScale: {x: 0.001, y: 0.001, z: 0.001}
+  m_LocalScale: {x: 0.0026087002, y: 0.0026087002, z: 0.0026087002}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1273837372}
