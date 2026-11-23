@@ -1,15 +1,8 @@
 using System.Collections;
-using System.Collections.Generic;
 using Unity.XR.CoreUtils;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
-using UnityEngine.XR.Interaction.Toolkit.Locomotion;
-using UnityEngine.XR.Interaction.Toolkit.Locomotion.Comfort;
-using UnityEngine.XR.Interaction.Toolkit.Locomotion.Movement;
-using UnityEngine.XR.Interaction.Toolkit.Locomotion.Teleportation;
-using UnityEngine.XR.Interaction.Toolkit.Locomotion.Turning;
-using UnityEngine.XR.Interaction.Toolkit.Samples.StarterAssets;
 using UnityEngine.XR.Interaction.Toolkit.UI;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 using UnityEngine.XR.Interaction.Toolkit.Interactors.Visuals;
@@ -23,28 +16,14 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
     [SerializeField, Min(0f)] float m_HideGracePeriod = 0.25f;
     [SerializeField] Vector3 m_WristMenuOffset = new Vector3(0f, 0.12f, 0.03f);
 
-    const string k_MovementKey = "PlayerTestScene.Movement";
-    const string k_TurnKey = "PlayerTestScene.Turn";
-    const string k_MoveSpeedKey = "PlayerTestScene.MoveSpeed";
-    const string k_SnapAngleKey = "PlayerTestScene.SnapAngle";
-    const string k_TurnSpeedKey = "PlayerTestScene.TurnSpeed";
-    const string k_VignetteKey = "PlayerTestScene.Vignette";
-    const string k_VignetteStrengthKey = "PlayerTestScene.VignetteStrength";
-
     static readonly Color k_PanelColor = new Color(0.055f, 0.052f, 0.047f, 0.97f);
     static readonly Color k_ControlColor = new Color(0.16f, 0.15f, 0.13f, 1f);
     static readonly Color k_SelectedColor = new Color(0.43f, 0.34f, 0.21f, 1f);
     static readonly Color k_TextColor = new Color(0.89f, 0.84f, 0.74f, 1f);
     static readonly Color k_AccentColor = new Color(0.72f, 0.58f, 0.36f, 1f);
 
-    readonly Dictionary<LocomotionProvider, bool> m_ProviderStates = new Dictionary<LocomotionProvider, bool>();
-    readonly List<LocomotionVignetteProvider> m_VignetteProviders = new List<LocomotionVignetteProvider>();
-
-    ControllerInputActionManager[] m_InputManagers;
-    DynamicMoveProvider[] m_MoveProviders;
-    SnapTurnProvider[] m_SnapTurnProviders;
-    ContinuousTurnProvider[] m_ContinuousTurnProviders;
-    LocomotionProvider[] m_LocomotionProviders;
+    PlayerComfortRig m_Rig;
+    ComfortSettings m_Settings;
     Camera m_PlayerCamera;
     Transform m_LeftWrist;
     ArmsVRController m_Arms;
@@ -67,7 +46,6 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
     readonly Text[] m_WristPoseLabels = new Text[6];
     Coroutine m_CalibrationRoutine;
     Coroutine m_HideCalibrationStatusRoutine;
-    TunnelingVignetteController m_VignetteController;
     Button m_TeleportButton;
     Button m_SmoothMoveButton;
     Button m_SnapTurnButton;
@@ -83,18 +61,11 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
     Text m_VignetteStrengthLabel;
     Coroutine m_SaveRoutine;
 
-    bool m_SmoothMovement;
-    bool m_SmoothTurning;
-    bool m_VignetteEnabled;
     bool m_MenuVisible;
     bool m_IsCalibrating;
     bool m_MenuRayHovering;
     bool m_HideTimerStarted;
     float m_HideTimer;
-    float m_MoveSpeed;
-    float m_SnapAngle;
-    float m_TurnSpeed;
-    float m_VignetteStrength;
 
     void Start()
     {
@@ -117,16 +88,11 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         HidePokeVisuals(xrOrigin.transform, "Left Controller");
         HidePokeVisuals(xrOrigin.transform, "Right Controller");
         ConfigureMenuRay(xrOrigin.transform);
-        m_InputManagers = FindObjectsByType<ControllerInputActionManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        m_MoveProviders = FindObjectsByType<DynamicMoveProvider>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        m_SnapTurnProviders = FindObjectsByType<SnapTurnProvider>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        m_ContinuousTurnProviders = FindObjectsByType<ContinuousTurnProvider>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        m_LocomotionProviders = FindObjectsByType<LocomotionProvider>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-
-        LoadSettings();
+        m_Rig = PlayerComfortRig.FindInScene();
+        m_Settings = m_Rig.LoadSettings();
         ApplySettings();
         ApplyTeleportVisualStyle();
-        CreateVignette();
+        m_Rig.CreateVignette(m_VignettePrefab, m_PlayerCamera != null ? m_PlayerCamera.transform : null, m_Settings);
 
         if (m_PlayerCamera == null || m_LeftWrist == null)
         {
@@ -227,42 +193,9 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         RestoreLocomotionProviders();
     }
 
-    void LoadSettings()
-    {
-        m_SmoothMovement = PlayerPrefs.GetInt(k_MovementKey, 0) == 1;
-        m_SmoothTurning = PlayerPrefs.GetInt(k_TurnKey, 0) == 1;
-        m_MoveSpeed = PlayerPrefs.GetFloat(k_MoveSpeedKey, m_MoveProviders.Length > 0 ? m_MoveProviders[0].moveSpeed : 2.5f);
-        m_SnapAngle = PlayerPrefs.GetFloat(k_SnapAngleKey, m_SnapTurnProviders.Length > 0 ? m_SnapTurnProviders[0].turnAmount : 45f);
-        m_TurnSpeed = PlayerPrefs.GetFloat(k_TurnSpeedKey, m_ContinuousTurnProviders.Length > 0 ? m_ContinuousTurnProviders[0].turnSpeed : 60f);
-        m_VignetteEnabled = PlayerPrefs.GetInt(k_VignetteKey, 1) == 1;
-        m_VignetteStrength = PlayerPrefs.GetFloat(k_VignetteStrengthKey, 0.55f);
-    }
-
     void ApplySettings()
     {
-        foreach (var inputManager in m_InputManagers)
-        {
-            inputManager.independentTurning = true;
-            inputManager.smoothMotionEnabled = m_SmoothMovement;
-            inputManager.smoothTurnEnabled = m_SmoothTurning;
-        }
-
-        foreach (var moveProvider in m_MoveProviders)
-            moveProvider.moveSpeed = m_MoveSpeed;
-
-        foreach (var snapTurnProvider in m_SnapTurnProviders)
-        {
-            snapTurnProvider.turnAmount = m_SnapAngle;
-            snapTurnProvider.enableTurnAround = false;
-        }
-
-        foreach (var turnProvider in m_ContinuousTurnProviders)
-        {
-            turnProvider.turnSpeed = m_TurnSpeed;
-            turnProvider.enableTurnAround = false;
-        }
-
-        ApplyVignetteSettings();
+        m_Rig.Apply(m_Settings);
         UpdateControlStates();
     }
 
@@ -279,47 +212,6 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
             lineVisual.invalidColorGradient = CreateGradient(new Color(0.58f, 0.30f, 0.25f, 0.82f));
             lineVisual.blockedColorGradient = CreateGradient(new Color(0.67f, 0.48f, 0.29f, 0.9f));
         }
-    }
-
-    void CreateVignette()
-    {
-        if (m_PlayerCamera == null || m_VignettePrefab == null)
-            return;
-
-        var vignetteObject = Instantiate(m_VignettePrefab, m_PlayerCamera.transform, false);
-        vignetteObject.name = "Player Tunneling Vignette";
-        m_VignetteController = vignetteObject.GetComponent<TunnelingVignetteController>();
-        if (m_VignetteController == null)
-            m_VignetteController = vignetteObject.AddComponent<TunnelingVignetteController>();
-
-        m_VignetteProviders.Clear();
-        foreach (var locomotionProvider in m_LocomotionProviders)
-        {
-            if (!(locomotionProvider is ContinuousMoveProvider) &&
-                !(locomotionProvider is SnapTurnProvider) &&
-                !(locomotionProvider is ContinuousTurnProvider) &&
-                !(locomotionProvider is TeleportationProvider))
-                continue;
-
-            m_VignetteProviders.Add(new LocomotionVignetteProvider
-            {
-                locomotionProvider = locomotionProvider,
-                enabled = true,
-            });
-        }
-
-        m_VignetteController.locomotionVignetteProviders = m_VignetteProviders;
-        ApplyVignetteSettings();
-    }
-
-    void ApplyVignetteSettings()
-    {
-        if (m_VignetteController == null)
-            return;
-
-        var parameters = m_VignetteController.defaultParameters;
-        parameters.apertureSize = m_VignetteEnabled ? Mathf.Lerp(1f, 0.35f, m_VignetteStrength) : 1f;
-        m_VignetteController.defaultParameters = parameters;
     }
 
     void EnsureXRUIInputModule()
@@ -375,27 +267,27 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         m_SmoothTurnButton = CreateButton("Smooth Turn", "SMOOTH", new Vector2(108f, 115f), new Vector2(208f, 44f), () => SetTurnMode(true));
 
         m_MoveSpeedLabel = CreateText("Move Speed Label", "WALK SPEED", new Vector2(0f, 52f), new Vector2(400f, 28f), 18, TextAnchor.MiddleLeft, FontStyle.Normal);
-        m_MoveSpeedSlider = CreateSlider("Move Speed", new Vector2(0f, 20f), 0.5f, 3.5f, m_MoveSpeed, value =>
+        m_MoveSpeedSlider = CreateSlider("Move Speed", new Vector2(0f, 20f), 0.5f, 3.5f, m_Settings.MoveSpeed, value =>
         {
-            m_MoveSpeed = value;
+            m_Settings.MoveSpeed = value;
             ApplySettings();
             ScheduleSave();
             UpdateValueLabels();
         });
 
         m_SnapAngleLabel = CreateText("Snap Angle Label", "SNAP ANGLE", new Vector2(0f, -35f), new Vector2(400f, 28f), 18, TextAnchor.MiddleLeft, FontStyle.Normal);
-        m_SnapAngleSlider = CreateSlider("Snap Angle", new Vector2(0f, -67f), 15f, 90f, m_SnapAngle, value =>
+        m_SnapAngleSlider = CreateSlider("Snap Angle", new Vector2(0f, -67f), 15f, 90f, m_Settings.SnapAngle, value =>
         {
-            m_SnapAngle = value;
+            m_Settings.SnapAngle = value;
             ApplySettings();
             ScheduleSave();
             UpdateValueLabels();
         });
 
         m_TurnSpeedLabel = CreateText("Turn Speed Label", "SMOOTH TURN SPEED", new Vector2(0f, -122f), new Vector2(400f, 28f), 18, TextAnchor.MiddleLeft, FontStyle.Normal);
-        m_TurnSpeedSlider = CreateSlider("Turn Speed", new Vector2(0f, -154f), 20f, 120f, m_TurnSpeed, value =>
+        m_TurnSpeedSlider = CreateSlider("Turn Speed", new Vector2(0f, -154f), 20f, 120f, m_Settings.TurnSpeed, value =>
         {
-            m_TurnSpeed = value;
+            m_Settings.TurnSpeed = value;
             ApplySettings();
             ScheduleSave();
             UpdateValueLabels();
@@ -403,9 +295,9 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
         m_VignetteButton = CreateButton("Vignette", "VIGNETTE: ON", new Vector2(0f, -210f), new Vector2(420f, 42f), ToggleVignette);
         m_VignetteStrengthLabel = CreateText("Vignette Strength Label", "VIGNETTE STRENGTH", new Vector2(0f, -258f), new Vector2(400f, 28f), 18, TextAnchor.MiddleLeft, FontStyle.Normal);
-        m_VignetteStrengthSlider = CreateSlider("Vignette Strength", new Vector2(0f, -290f), 0f, 0.8f, m_VignetteStrength, value =>
+        m_VignetteStrengthSlider = CreateSlider("Vignette Strength", new Vector2(0f, -290f), 0f, 0.8f, m_Settings.VignetteStrength, value =>
         {
-            m_VignetteStrength = value;
+            m_Settings.VignetteStrength = value;
             ApplySettings();
             ScheduleSave();
             UpdateValueLabels();
@@ -444,21 +336,21 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
     void SetMovementMode(bool smooth)
     {
-        m_SmoothMovement = smooth;
+        m_Settings.SmoothMovement = smooth;
         ApplySettings();
         ScheduleSave();
     }
 
     void SetTurnMode(bool smooth)
     {
-        m_SmoothTurning = smooth;
+        m_Settings.SmoothTurning = smooth;
         ApplySettings();
         ScheduleSave();
     }
 
     void ToggleVignette()
     {
-        m_VignetteEnabled = !m_VignetteEnabled;
+        m_Settings.VignetteEnabled = !m_Settings.VignetteEnabled;
         ApplySettings();
         ScheduleSave();
         UpdateControlStates();
@@ -633,72 +525,15 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
     IEnumerator CalibrateArms()
     {
-        const float preparationTime = 5f;
-        const float sampleTime = 1.25f;
-        const float maximumDrift = 0.06f;
-        var elapsed = 0f;
-        while (elapsed < preparationTime)
-        {
-            SetCalibrationStatus($"ARM CALIBRATION\nStretch both arms sideways\nHold still in {Mathf.CeilToInt(preparationTime - elapsed)}");
-            elapsed += Time.unscaledDeltaTime;
-            yield return null;
-        }
+        return ArmCalibration.Run(m_Arms, SetCalibrationStatus, OnArmCalibrationApplied, FinishCalibration);
+    }
 
-        elapsed = 0f;
-        var sampleCount = 0;
-        var leftScaleTotal = 0f;
-        var rightScaleTotal = 0f;
-        var firstLeft = Vector3.zero;
-        var firstRight = Vector3.zero;
-        while (elapsed < sampleTime)
-        {
-            if (m_Arms == null)
-            {
-                FinishCalibration("ARMS UNAVAILABLE");
-                yield break;
-            }
-            if (!m_Arms.TryGetCalibrationSample(out var leftScale, out var rightScale, out var leftWrist, out var rightWrist, out var error))
-            {
-                FinishCalibration("CALIBRATION FAILED\n" + error);
-                yield break;
-            }
-
-            if (sampleCount == 0)
-            {
-                firstLeft = leftWrist;
-                firstRight = rightWrist;
-            }
-            else if (Vector3.Distance(firstLeft, leftWrist) > maximumDrift || Vector3.Distance(firstRight, rightWrist) > maximumDrift)
-            {
-                FinishCalibration("CALIBRATION FAILED\nHold both arms still");
-                yield break;
-            }
-
-            SetCalibrationStatus("ARM CALIBRATION\nHold still...");
-            leftScaleTotal += leftScale;
-            rightScaleTotal += rightScale;
-            sampleCount++;
-            elapsed += Time.unscaledDeltaTime;
-            yield return null;
-        }
-
-        if (sampleCount == 0)
-        {
-            FinishCalibration("CALIBRATION FAILED\nNo tracking samples");
-            yield break;
-        }
-        if (m_Arms == null || !m_Arms.isActiveAndEnabled)
-        {
-            FinishCalibration("ARMS UNAVAILABLE");
-            yield break;
-        }
-
-        m_Arms.SetArmScales(leftScaleTotal / sampleCount, rightScaleTotal / sampleCount);
+    void OnArmCalibrationApplied()
+    {
         m_LeftArmScaleSlider.SetValueWithoutNotify(m_Arms.LeftArmScale);
         m_RightArmScaleSlider.SetValueWithoutNotify(m_Arms.RightArmScale);
         UpdateArmScaleLabel();
         ScheduleSave();
-        FinishCalibration("CALIBRATION COMPLETE\nEstimated reach - adjust to fit");
     }
 
     void CancelCalibration()
@@ -798,51 +633,40 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
     void SuppressLocomotionProviders()
     {
-        m_ProviderStates.Clear();
-        foreach (var provider in m_LocomotionProviders)
-        {
-            m_ProviderStates[provider] = provider.enabled;
-            provider.enabled = false;
-        }
+        m_Rig?.SuppressLocomotion();
     }
 
     void RestoreLocomotionProviders()
     {
-        foreach (var providerState in m_ProviderStates)
-        {
-            if (providerState.Key != null)
-                providerState.Key.enabled = providerState.Value;
-        }
-
-        m_ProviderStates.Clear();
+        m_Rig?.RestoreLocomotion();
     }
 
     void UpdateControlStates()
     {
-        SetButtonState(m_TeleportButton, !m_SmoothMovement);
-        SetButtonState(m_SmoothMoveButton, m_SmoothMovement);
-        SetButtonState(m_SnapTurnButton, !m_SmoothTurning);
-        SetButtonState(m_SmoothTurnButton, m_SmoothTurning);
+        SetButtonState(m_TeleportButton, !m_Settings.SmoothMovement);
+        SetButtonState(m_SmoothMoveButton, m_Settings.SmoothMovement);
+        SetButtonState(m_SnapTurnButton, !m_Settings.SmoothTurning);
+        SetButtonState(m_SmoothTurnButton, m_Settings.SmoothTurning);
 
         if (m_VignetteButton != null)
         {
             var label = m_VignetteButton.GetComponentInChildren<Text>();
             if (label != null)
-                label.text = m_VignetteEnabled ? "VIGNETTE: ON" : "VIGNETTE: OFF";
-            SetButtonState(m_VignetteButton, m_VignetteEnabled);
+                label.text = m_Settings.VignetteEnabled ? "VIGNETTE: ON" : "VIGNETTE: OFF";
+            SetButtonState(m_VignetteButton, m_Settings.VignetteEnabled);
         }
     }
 
     void UpdateValueLabels()
     {
         if (m_MoveSpeedLabel != null)
-            m_MoveSpeedLabel.text = $"WALK SPEED   {m_MoveSpeed:0.0} m/s";
+            m_MoveSpeedLabel.text = $"WALK SPEED   {m_Settings.MoveSpeed:0.0} m/s";
         if (m_SnapAngleLabel != null)
-            m_SnapAngleLabel.text = $"SNAP ANGLE   {m_SnapAngle:0} degrees";
+            m_SnapAngleLabel.text = $"SNAP ANGLE   {m_Settings.SnapAngle:0} degrees";
         if (m_TurnSpeedLabel != null)
-            m_TurnSpeedLabel.text = $"SMOOTH TURN SPEED   {m_TurnSpeed:0} degrees/s";
+            m_TurnSpeedLabel.text = $"SMOOTH TURN SPEED   {m_Settings.TurnSpeed:0} degrees/s";
         if (m_VignetteStrengthLabel != null)
-            m_VignetteStrengthLabel.text = $"VIGNETTE STRENGTH   {m_VignetteStrength:0.00}";
+            m_VignetteStrengthLabel.text = $"VIGNETTE STRENGTH   {m_Settings.VignetteStrength:0.00}";
     }
 
     void ScheduleSave()
@@ -861,14 +685,7 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
     void SaveSettingsNow()
     {
-        PlayerPrefs.SetInt(k_MovementKey, m_SmoothMovement ? 1 : 0);
-        PlayerPrefs.SetInt(k_TurnKey, m_SmoothTurning ? 1 : 0);
-        PlayerPrefs.SetFloat(k_MoveSpeedKey, m_MoveSpeed);
-        PlayerPrefs.SetFloat(k_SnapAngleKey, m_SnapAngle);
-        PlayerPrefs.SetFloat(k_TurnSpeedKey, m_TurnSpeed);
-        PlayerPrefs.SetInt(k_VignetteKey, m_VignetteEnabled ? 1 : 0);
-        PlayerPrefs.SetFloat(k_VignetteStrengthKey, m_VignetteStrength);
-        PlayerPrefs.Save();
+        m_Settings?.Save();
     }
 
     void SetButtonState(Button button, bool selected)

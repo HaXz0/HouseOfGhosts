@@ -12,7 +12,11 @@ using UnityEngine.SceneManagement;
 [InitializeOnLoad]
 static class ArmsVRSceneSetup
 {
-    const string ScenePath = "Assets/HouseOfGhosts/Scenes/LeoScenes/PlayerTestScene.unity";
+    static readonly string[] ScenePaths =
+    {
+        "Assets/HouseOfGhosts/Scenes/LeoScenes/PlayerTestScene.unity",
+        "Assets/HouseOfGhosts/Scenes/LeoScenes/MainMenu.unity",
+    };
     const string PrefabPath = "Assets/HouseOfGhosts/Ferron/Models/Prefabs/ArmsVR.prefab";
     const string ModelPath = "Assets/HouseOfGhosts/Ferron/Models/Models/ArmsVR.fbx";
     const string GeneratedAvatarPath = "Assets/HouseOfGhosts/Leo/Prefabs/ArmsVR_Generic_Avatar.asset";
@@ -28,29 +32,45 @@ static class ArmsVRSceneSetup
 
     static void OnSceneOpened(Scene scene, OpenSceneMode mode)
     {
-        if (scene.path == ScenePath)
+        if (Array.IndexOf(ScenePaths, scene.path) >= 0)
             EditorApplication.delayCall += TrySetupOpenScene;
     }
 
     [MenuItem("Tools/House of Ghosts/Set Up ArmsVR")]
     static void SetUpFromMenu()
     {
-        var scene = SceneManager.GetSceneByPath(ScenePath);
-        if (!scene.IsValid() || !scene.isLoaded)
+        var foundScene = false;
+        foreach (var path in ScenePaths)
         {
-            Debug.LogWarning("Open PlayerTestScene before setting up ArmsVR.");
-            return;
+            var scene = SceneManager.GetSceneByPath(path);
+            if (!scene.IsValid() || !scene.isLoaded)
+                continue;
+            foundScene = true;
+            SetUpScene(scene);
         }
 
-        TrySetupOpenScene();
+        if (!foundScene)
+            Debug.LogWarning("Open PlayerTestScene or MainMenu before setting up ArmsVR.");
     }
 
     static void TrySetupOpenScene()
     {
+        foreach (var path in ScenePaths)
+        {
+            var scene = SceneManager.GetSceneByPath(path);
+            if (scene.IsValid() && scene.isLoaded)
+                SetUpScene(scene);
+        }
+    }
+
+    /// <summary>
+    /// Adds ArmsVR to the scene's XR Origin if it does not have it yet. Safe to call repeatedly.
+    /// </summary>
+    internal static void SetUpScene(Scene scene)
+    {
         if (EditorApplication.isPlayingOrWillChangePlaymode)
             return;
 
-        var scene = SceneManager.GetSceneByPath(ScenePath);
         if (!scene.IsValid() || !scene.isLoaded)
             return;
 
@@ -88,7 +108,7 @@ static class ArmsVRSceneSetup
                 EditorUtility.SetDirty(existingAnimator);
                 EditorSceneManager.MarkSceneDirty(scene);
                 if (sceneWasDirty)
-                    Debug.Log("Assigned the ArmsVR Avatar. Save PlayerTestScene to keep the animation setup.", existingArms);
+                    Debug.Log($"Assigned the ArmsVR Avatar. Save {scene.name} to keep the animation setup.", existingArms);
                 else
                     EditorSceneManager.SaveScene(scene);
             }
@@ -196,7 +216,7 @@ static class ArmsVRSceneSetup
 
             EditorSceneManager.MarkSceneDirty(scene);
             if (wasDirty)
-                Debug.Log("ArmsVR was added to PlayerTestScene. Save the scene to keep it.", arms);
+                Debug.Log($"ArmsVR was added to {scene.name}. Save the scene to keep it.", arms);
             else if (!EditorSceneManager.SaveScene(scene))
                 Debug.LogWarning("ArmsVR was added, but the scene could not be saved.", arms);
         }
