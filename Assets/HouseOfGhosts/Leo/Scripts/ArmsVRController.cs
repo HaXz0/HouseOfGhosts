@@ -69,12 +69,12 @@ public sealed class ArmsVRController : MonoBehaviour
         public void ProcessRootMotion(AnimationStream stream) { }
     }
 
-    // Finger groups in layer order: index (trigger), middle/ring/pinky (grip), thumb (button touch).
+    // Finger groups in layer order: index (trigger), thumb/middle/ring/pinky (grip).
+    const int k_FingerGroupCount = 2;
     static readonly string[][] k_FingerGroupBones =
     {
         new[] { "Index" },
-        new[] { "Middle", "Ring", "Pinky" },
-        new[] { "Thumb" },
+        new[] { "Thumb", "Middle", "Ring", "Pinky" },
     };
 
     // Per-hand input and finger animation state. Each finger group scrubs its own masked copy of the squeeze clip.
@@ -85,10 +85,10 @@ public sealed class ArmsVRController : MonoBehaviour
         public InputAction tracked;
         public InputAction gripPosition;
         public InputAction gripRotation;
-        public InputAction thumbTouch;
-        public readonly AnimationClipPlayable[] fingerPlayables = new AnimationClipPlayable[3];
-        public readonly AvatarMask[] fingerMasks = new AvatarMask[3];
-        public readonly float[] fingerCurl = new float[3];
+        public readonly AnimationClipPlayable[] fingerPlayables = new AnimationClipPlayable[k_FingerGroupCount];
+        public readonly AvatarMask[] fingerMasks = new AvatarMask[k_FingerGroupCount];
+        public readonly float[] fingerCurl = new float[k_FingerGroupCount];
+        public Transform indexBone;
         public Vector3 palmFromWrist;
         public float modelHandLength;
         public float handScale = 1f;
@@ -256,9 +256,6 @@ public sealed class ArmsVRController : MonoBehaviour
             $"<XRController>{{{usage}}}/devicePosition");
         hand.gripRotation = CreateOwnedAction($"{side} Grip Rotation", InputActionType.Value, "Quaternion",
             $"<XRController>{{{usage}}}/deviceRotation");
-        hand.thumbTouch = CreateOwnedAction($"{side} Thumb Touch", InputActionType.PassThrough, "Button",
-            $"<XRController>{{{usage}}}/thumbstickTouched", $"<XRController>{{{usage}}}/primaryTouched",
-            $"<XRController>{{{usage}}}/secondaryTouched", $"<XRController>{{{usage}}}/thumbrestTouched");
         return true;
     }
 
@@ -337,13 +334,13 @@ public sealed class ArmsVRController : MonoBehaviour
         graph = PlayableGraph.Create("ArmsVR Animation and IK");
         graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
         // Layer 0 is the open hand; each hand then has one masked layer per finger group.
-        var layers = AnimationLayerMixerPlayable.Create(graph, 7);
+        var layers = AnimationLayerMixerPlayable.Create(graph, 1 + k_FingerGroupCount * 2);
         var rest = AnimationClipPlayable.Create(graph, leftGripClip);
         rest.SetSpeed(0d);
         graph.Connect(rest, 0, layers, 0);
         layers.SetInputWeight(0, 1f);
         if (!AddFingerLayers(layers, 1, leftHand, leftGripClip, leftRig) ||
-            !AddFingerLayers(layers, 4, rightHand, rightGripClip, rightRig))
+            !AddFingerLayers(layers, 1 + k_FingerGroupCount, rightHand, rightGripClip, rightRig))
         {
             Debug.LogError("ArmsVR could not create independent finger masks for both hands.", this);
             return false;
@@ -373,12 +370,15 @@ public sealed class ArmsVRController : MonoBehaviour
         }
 
         graph.Play();
+        VerifyFingerAnimation(leftRig, leftGripClip, "left");
+        VerifyFingerAnimation(rightRig, rightGripClip, "right");
         return true;
     }
 
     bool AddFingerLayers(AnimationLayerMixerPlayable layers, int firstLayer, Transform hand, AnimationClip clip, HandRig rig)
     {
-        for (var group = 0; group < 3; group++)
+        rig.indexBone = FindFingerBone(hand, "Index", 1);
+        for (var group = 0; group < k_FingerGroupCount; group++)
         {
             var mask = CreateFingerMask(hand, k_FingerGroupBones[group]);
             if (mask == null)
@@ -395,16 +395,18 @@ public sealed class ArmsVRController : MonoBehaviour
         return true;
     }
 
+    // Paths are built from the Animator root, matching the clip and avatar bindings (e.g. "Armature/.../Hand.L/Index1.L").
     AvatarMask CreateFingerMask(Transform hand, string[] fingerNames)
     {
         var mask = new AvatarMask();
-        mask.AddTransformPath(animator.transform, true);
-        var handPath = GetRelativePath(animator.transform, hand);
+        var allTransforms = animator.GetComponentsInChildren<Transform>(true);
+        mask.transformCount = allTransforms.Length;
         var activeCount = 0;
-        for (var index = 0; index < mask.transformCount; index++)
+        for (var index = 0; index < allTransforms.Length; index++)
         {
-            var path = mask.GetTransformPath(index);
-            var isFinger = IsFingerPath(path, handPath, fingerNames);
+            var bone = allTransforms[index];
+            var isFinger = IsFingerOf(bone, hand, fingerNames);
+            mask.SetTransformPath(index, bone == animator.transform ? string.Empty : GetRelativePath(animator.transform, bone));
             mask.SetTransformActive(index, isFinger);
             if (isFinger)
                 activeCount++;
@@ -417,26 +419,21 @@ public sealed class ArmsVRController : MonoBehaviour
         return mask;
     }
 
-    // True when the path is below the hand and its first bone under the hand belongs to one of the fingers.
-    static bool IsFingerPath(string path, string handPath, string[] fingerNames)
+    // True when the bone is below the hand and the hand's direct child it hangs from is one of the fingers.
+    static bool IsFingerOf(Transform bone, Transform hand, string[] fingerNames)
     {
-        int handIndex;
-        if (path.StartsWith(handPath + "/", StringComparison.Ordinal))
-        {
-            handIndex = 0;
-        }
-        else
-        {
-            var found = path.IndexOf("/" + handPath + "/", StringComparison.Ordinal);
-            if (found < 0)
-                return false;
-            handIndex = found + 1;
-        }
+        if (bone == hand)
+            return false;
 
-        var fingerStart = handIndex + handPath.Length + 1;
+        var current = bone;
+        while (current.parent != null && current.parent != hand)
+            current = current.parent;
+        if (current.parent != hand)
+            return false;
+
         foreach (var finger in fingerNames)
         {
-            if (string.Compare(path, fingerStart, finger, 0, finger.Length, StringComparison.OrdinalIgnoreCase) == 0)
+            if (current.name.StartsWith(finger, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
         return false;
@@ -538,14 +535,36 @@ public sealed class ArmsVRController : MonoBehaviour
     void UpdateFingers(HandRig hand, AnimationClip clip)
     {
         var grip = ReadAxis(hand.grip);
-        var targets = new Vector3(ReadAxis(hand.trigger), grip, hand.thumbTouch.IsPressed() ? 1f : 0f);
+        var index = ReadAxis(hand.trigger);
         var blend = SmoothingBlend(fingerSharpness);
         var clipEnd = Math.Max(0d, clip.length - 0.0001d);
-        for (var group = 0; group < 3; group++)
-        {
-            hand.fingerCurl[group] = Mathf.Lerp(hand.fingerCurl[group], targets[group], blend);
+        hand.fingerCurl[0] = Mathf.Lerp(hand.fingerCurl[0], index, blend);
+        hand.fingerCurl[1] = Mathf.Lerp(hand.fingerCurl[1], grip, blend);
+        for (var group = 0; group < k_FingerGroupCount; group++)
             hand.fingerPlayables[group].SetTime(hand.fingerCurl[group] * clipEnd);
-        }
+    }
+
+    // Evaluates the graph fully closed and fully open once, and reports if the squeeze clip does not move the index finger.
+    void VerifyFingerAnimation(HandRig hand, AnimationClip clip, string side)
+    {
+        if (hand.indexBone == null)
+            return;
+
+        var clipEnd = Math.Max(0d, clip.length - 0.0001d);
+        SetFingerTimes(hand, clipEnd);
+        graph.Evaluate(0f);
+        var closed = hand.indexBone.localRotation;
+        SetFingerTimes(hand, 0d);
+        graph.Evaluate(0f);
+        var open = hand.indexBone.localRotation;
+        if (Quaternion.Angle(open, closed) < 1f)
+            Debug.LogError($"ArmsVR: the {side} squeeze clip '{clip.name}' does not move {hand.indexBone.name}. Check that the clip's bone paths match the arms model.", this);
+    }
+
+    static void SetFingerTimes(HandRig hand, double time)
+    {
+        for (var group = 0; group < k_FingerGroupCount; group++)
+            hand.fingerPlayables[group].SetTime(time);
     }
 
     static float SmoothingBlend(float sharpness)

@@ -5580,10 +5580,8 @@ MonoBehaviour:
   vignetteStrengthLabel: {fileID: 1055130179}
   masterVolumeSlider: {fileID: 2100055468}
   masterVolumeLabel: {fileID: 306616062}
-  leftArmSlider: {fileID: 1329082847}
-  leftArmLabel: {fileID: 723671680}
-  rightArmSlider: {fileID: 337250714}
-  rightArmLabel: {fileID: 1949557637}
+  heightSlider: {fileID: 1329082847}
+  heightLabel: {fileID: 723671680}
   armStatusLabel: {fileID: 1359517183}
   calibrateArmsButton: {fileID: 1052436889}
   resetArmsButton: {fileID: 341845808}
@@ -10947,6 +10945,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 202364687, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1670256624, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 1178791450436251564, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_CameraYOffset
       value: 0
@@ -11027,12 +11033,20 @@ PrefabInstance:
       propertyPath: m_IndependentTurning
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 5895826684305351068, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 6480925242510836759, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_EnableTurnAround
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7347985736721345035, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_EnableTurnAround
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 9173983156334026967, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
@@ -11987,6 +12001,10 @@ MonoBehaviour:
   handPositionSharpness: 22
   handRotationSharpness: 16
   elbowSharpness: 10
+  gripPitch: 45
+  palmToGripDistance: 0.035
+  gripAlongPalm: 0.55
+  fingerSharpness: 25
 --- !u!114 &1931553130
 MonoBehaviour:
   m_ObjectHideFlags: 0
