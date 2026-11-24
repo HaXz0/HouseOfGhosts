@@ -6931,6 +6931,10 @@ MonoBehaviour:
   handPositionSharpness: 22
   handRotationSharpness: 16
   elbowSharpness: 10
+  gripPitch: 45
+  palmToGripDistance: 0.035
+  gripAlongPalm: 0.55
+  fingerSharpness: 25
 --- !u!114 &2057665048
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7348,12 +7352,20 @@ PrefabInstance:
       propertyPath: m_SmoothMotionEnabled
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 5895826684305351068, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 6480925242510836759, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_EnableTurnAround
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7347985736721345035, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_EnableTurnAround
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 9173983156334026967, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []

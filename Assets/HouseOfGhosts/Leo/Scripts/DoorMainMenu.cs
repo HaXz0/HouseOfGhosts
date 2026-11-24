@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using TMPro;
 using UnityEngine;
@@ -12,9 +13,26 @@ using UnityEngine.UI;
 [DisallowMultipleComponent]
 public sealed class DoorMainMenu : MonoBehaviour
 {
+    [Serializable]
+    public struct SceneOption
+    {
+        [Tooltip("Text shown on the button.")]
+        public string label;
+        [Tooltip("Scene name. It must be listed in File > Build Profiles > Scene List.")]
+        public string sceneName;
+    }
+
     [Header("Scene Loading")]
-    [Tooltip("Scene loaded by the Play button. It must be listed in File > Build Profiles > Scene List.")]
-    [SerializeField] string gameplaySceneName = "PlayerTestScene";
+    [Tooltip("One button is created on the scene selection page for every entry, in this order.")]
+    [SerializeField] SceneOption[] sceneOptions =
+    {
+        new SceneOption { label = "PLAYER TEST SCENE", sceneName = "PlayerTestScene" },
+        new SceneOption { label = "KHAMID PLAYGROUND", sceneName = "KhamidPlayground" },
+    };
+    [Tooltip("Parent of the generated scene buttons (has a Vertical Layout Group).")]
+    [SerializeField] RectTransform sceneButtonContainer;
+    [Tooltip("Inactive button that is copied for every scene option.")]
+    [SerializeField] Button sceneButtonTemplate;
     [Tooltip("Disabled while the gameplay scene loads so Play cannot be pressed twice.")]
     [SerializeField] CanvasGroup menuCanvasGroup;
 
@@ -28,6 +46,7 @@ public sealed class DoorMainMenu : MonoBehaviour
 
     [Header("Pages")]
     [SerializeField] GameObject mainPage;
+    [SerializeField] GameObject sceneSelectionPage;
     [SerializeField] GameObject settingsPage;
     [SerializeField] GameObject comfortPage;
     [SerializeField] GameObject audioPage;
@@ -96,6 +115,7 @@ public sealed class DoorMainMenu : MonoBehaviour
         InitializeSliders();
         isInitializing = false;
 
+        CreateSceneButtons();
         RefreshComfortControls();
         RefreshAudioControls();
         SetArmStatus(k_ArmHint);
@@ -143,6 +163,7 @@ public sealed class DoorMainMenu : MonoBehaviour
             CancelArmCalibration();
 
         SetPageActive(mainPage, page);
+        SetPageActive(sceneSelectionPage, page);
         SetPageActive(settingsPage, page);
         SetPageActive(comfortPage, page);
         SetPageActive(audioPage, page);
@@ -163,9 +184,49 @@ public sealed class DoorMainMenu : MonoBehaviour
         if (isLoading)
             return;
 
-        if (!Application.CanStreamedLevelBeLoaded(gameplaySceneName))
+        if (sceneSelectionPage == null)
         {
-            Debug.LogError($"Cannot load '{gameplaySceneName}'. Check the scene name and that it is in the Build Profiles scene list.", this);
+            Debug.LogError("Scene selection page is not assigned on Door Main Menu.", this);
+            return;
+        }
+
+        ShowPage(sceneSelectionPage);
+    }
+
+    void CreateSceneButtons()
+    {
+        if (sceneButtonContainer == null || sceneButtonTemplate == null)
+        {
+            Debug.LogError("Scene button container or template is not assigned on Door Main Menu.", this);
+            return;
+        }
+
+        sceneButtonTemplate.gameObject.SetActive(false);
+        foreach (var option in sceneOptions)
+        {
+            if (string.IsNullOrWhiteSpace(option.sceneName))
+                continue;
+
+            var button = Instantiate(sceneButtonTemplate, sceneButtonContainer);
+            button.name = option.sceneName + " Button";
+            var label = button.GetComponentInChildren<TMP_Text>(true);
+            SetText(label, string.IsNullOrWhiteSpace(option.label) ? option.sceneName : option.label);
+
+            // Copy into a local so each button loads its own scene.
+            var sceneName = option.sceneName;
+            button.onClick.AddListener(() => LoadGameplayScene(sceneName));
+            button.gameObject.SetActive(true);
+        }
+    }
+
+    void LoadGameplayScene(string sceneName)
+    {
+        if (isLoading)
+            return;
+
+        if (!Application.CanStreamedLevelBeLoaded(sceneName))
+        {
+            Debug.LogError($"Cannot load '{sceneName}'. Check the scene name and that it is in the Build Profiles scene list.", this);
             return;
         }
 
@@ -174,7 +235,7 @@ public sealed class DoorMainMenu : MonoBehaviour
         SaveNow();
         if (menuCanvasGroup != null)
             menuCanvasGroup.interactable = false;
-        SceneManager.LoadSceneAsync(gameplaySceneName);
+        SceneManager.LoadSceneAsync(sceneName);
     }
 
     public void Quit()

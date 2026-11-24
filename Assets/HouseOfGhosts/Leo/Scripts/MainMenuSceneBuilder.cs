@@ -18,8 +18,9 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 using Object = UnityEngine.Object;
 
 /// <summary>
-/// Editor tool: Tools > House of Ghosts > Build Main Menu.
-/// Adds the XR player, UI event system, teleportable floor and the door main menu to the open MainMenu scene.
+/// Editor tools:
+/// Tools > House of Ghosts > Build Main Menu adds the XR player, UI event system, teleportable floor and the door main menu to the open MainMenu scene.
+/// Tools > House of Ghosts > Add Scene Selection Page adds only the scene selection page to an existing door main menu.
 /// Everything is created as normal, editable GameObjects; save the scene afterwards.
 /// </summary>
 static class MainMenuSceneBuilder
@@ -104,7 +105,81 @@ static class MainMenuSceneBuilder
         Undo.CollapseUndoOperations(undoGroup);
         EditorSceneManager.MarkSceneDirty(scene);
         Selection.activeGameObject = menu.gameObject;
+        WarnAboutScenesMissingFromBuild(menu);
         Debug.Log("Main menu built on the front door. Save the scene (Ctrl+S / Cmd+S) to keep it.", menu);
+    }
+
+    [MenuItem("Tools/House of Ghosts/Add Scene Selection Page")]
+    static void AddSceneSelectionPage()
+    {
+        if (EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            Debug.LogWarning("Exit Play Mode before adding the scene selection page.");
+            return;
+        }
+
+        var scene = SceneManager.GetActiveScene();
+        if (scene.path != ScenePath)
+        {
+            Debug.LogWarning("Open the MainMenu scene (and make it the active scene) before adding the scene selection page.");
+            return;
+        }
+
+        var menu = Object.FindFirstObjectByType<DoorMainMenu>(FindObjectsInactive.Include);
+        if (menu == null)
+        {
+            Debug.LogWarning("MainMenu has no Door Main Menu yet; use Tools > House of Ghosts > Build Main Menu instead.");
+            return;
+        }
+
+        var refs = new SerializedObject(menu);
+        if (refs.FindProperty("sceneSelectionPage").objectReferenceValue != null)
+        {
+            Debug.LogWarning("Door Main Menu already has a scene selection page; nothing was changed. Delete it first if you want to recreate it.", menu);
+            return;
+        }
+
+        Undo.IncrementCurrentGroup();
+        Undo.SetCurrentGroupName("Add Scene Selection Page");
+        var undoGroup = Undo.GetCurrentGroup();
+
+        var page = BuildSceneSelectionPage(menu.GetComponent<RectTransform>(), menu, refs);
+        Undo.RegisterCreatedObjectUndo(page.gameObject, "Add Scene Selection Page");
+        SetLayerRecursively(page, LayerMask.NameToLayer("UI"));
+        refs.ApplyModifiedProperties();
+
+        Undo.CollapseUndoOperations(undoGroup);
+        EditorSceneManager.MarkSceneDirty(scene);
+        Selection.activeGameObject = menu.gameObject;
+        WarnAboutScenesMissingFromBuild(menu);
+        Debug.Log("Scene selection page added to the Door Main Menu. Save the scene (Ctrl+S / Cmd+S) to keep it.", menu);
+    }
+
+    static void WarnAboutScenesMissingFromBuild(DoorMainMenu menu)
+    {
+        var options = new SerializedObject(menu).FindProperty("sceneOptions");
+        if (options == null)
+            return;
+
+        for (var i = 0; i < options.arraySize; i++)
+        {
+            var sceneName = options.GetArrayElementAtIndex(i).FindPropertyRelative("sceneName").stringValue;
+            if (string.IsNullOrWhiteSpace(sceneName))
+                continue;
+
+            var inBuild = false;
+            foreach (var buildScene in EditorBuildSettings.scenes)
+            {
+                if (buildScene.enabled && System.IO.Path.GetFileNameWithoutExtension(buildScene.path) == sceneName)
+                {
+                    inBuild = true;
+                    break;
+                }
+            }
+
+            if (!inBuild)
+                Debug.LogWarning($"Scene option '{sceneName}' is not an enabled scene in File > Build Profiles > Scene List; its button will not load.", menu);
+        }
     }
 
     // ---------- Player & scene setup ----------
@@ -273,6 +348,7 @@ static class MainMenuSceneBuilder
         SetReference(refs, "playerCamera", origin.Camera.transform);
 
         BuildMainPage(canvasRect, menu, refs);
+        BuildSceneSelectionPage(canvasRect, menu, refs);
         BuildSettingsPage(canvasRect, menu, refs);
         BuildComfortPage(canvasRect, menu, refs);
         BuildAudioPage(canvasRect, menu, refs);
@@ -315,6 +391,34 @@ static class MainMenuSceneBuilder
 
         var hint = CreateText("Hint", page, "Point with your controller and pull the trigger to select", new Vector2(0f, -340f), new Vector2(920f, 40f), 24, TextAlignmentOptions.Center, FontStyles.Italic);
         hint.color = k_HintColor;
+    }
+
+    static RectTransform BuildSceneSelectionPage(RectTransform canvas, DoorMainMenu menu, SerializedObject refs)
+    {
+        var page = CreatePage("Scene Selection Page", canvas);
+        SetReference(refs, "sceneSelectionPage", page.gameObject);
+        CreatePageHeader(page, "SELECT SCENE", menu.ShowMainPage);
+
+        // DoorMainMenu fills this container at runtime with one copy of the template per scene option.
+        var container = new GameObject("Scene Buttons", typeof(RectTransform), typeof(VerticalLayoutGroup)).GetComponent<RectTransform>();
+        container.SetParent(page, false);
+        SetRect(container, new Vector2(0f, -40f), new Vector2(640f, 660f));
+        var layout = container.GetComponent<VerticalLayoutGroup>();
+        layout.spacing = 16f;
+        layout.childAlignment = TextAnchor.UpperCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+        SetReference(refs, "sceneButtonContainer", container);
+
+        var template = CreateButton("Scene Button Template", container, "SCENE", Vector2.zero, new Vector2(640f, 84f), 36);
+        template.gameObject.AddComponent<LayoutElement>().preferredHeight = 84f;
+        template.gameObject.SetActive(false);
+        SetReference(refs, "sceneButtonTemplate", template);
+
+        page.gameObject.SetActive(false);
+        return page;
     }
 
     static void BuildSettingsPage(RectTransform canvas, DoorMainMenu menu, SerializedObject refs)
