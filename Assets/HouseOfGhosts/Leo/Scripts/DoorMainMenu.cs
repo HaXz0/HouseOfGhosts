@@ -2,6 +2,7 @@ using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 
 /// <summary>
@@ -54,10 +55,10 @@ public sealed class DoorMainMenu : MonoBehaviour
     [SerializeField] TMP_Text masterVolumeLabel;
 
     [Header("Arm Calibration")]
-    [SerializeField] Slider leftArmSlider;
-    [SerializeField] TMP_Text leftArmLabel;
-    [SerializeField] Slider rightArmSlider;
-    [SerializeField] TMP_Text rightArmLabel;
+    [FormerlySerializedAs("leftArmSlider")]
+    [SerializeField] Slider heightSlider;
+    [FormerlySerializedAs("leftArmLabel")]
+    [SerializeField] TMP_Text heightLabel;
     [SerializeField] TMP_Text armStatusLabel;
     [SerializeField] Button calibrateArmsButton;
     [SerializeField] Button resetArmsButton;
@@ -67,7 +68,7 @@ public sealed class DoorMainMenu : MonoBehaviour
     [SerializeField] Color normalButtonColor = new Color(0.16f, 0.15f, 0.13f, 1f);
     [SerializeField] Color selectedButtonColor = new Color(0.43f, 0.34f, 0.21f, 1f);
 
-    const string k_ArmHint = "Stand in a T-pose to estimate your reach,\nthen fine-tune with the sliders.";
+    const string k_ArmHint = "Stand up straight, look ahead and press CALIBRATE.\nFine-tune your height with the slider.";
 
     PlayerComfortRig rig;
     ComfortSettings settings;
@@ -285,23 +286,14 @@ public sealed class DoorMainMenu : MonoBehaviour
 
     // ---------- Arm Calibration ----------
 
-    public void SetLeftArmScale(float value)
+    /// <summary>Height slider callback; the slider value is in centimeters.</summary>
+    public void SetPlayerHeight(float centimeters)
     {
         if (isInitializing || !ArmsAvailable)
             return;
 
-        arms.SetLeftArmScale(value);
-        RefreshArmLabels();
-        ScheduleSave();
-    }
-
-    public void SetRightArmScale(float value)
-    {
-        if (isInitializing || !ArmsAvailable)
-            return;
-
-        arms.SetRightArmScale(value);
-        RefreshArmLabels();
+        arms.SetPlayerHeight(centimeters / 100f);
+        RefreshArmControls();
         ScheduleSave();
     }
 
@@ -310,7 +302,7 @@ public sealed class DoorMainMenu : MonoBehaviour
         if (calibrationRoutine != null || !ArmsAvailable)
             return;
 
-        // Locomotion is paused so stretching the arms cannot move or turn the player.
+        // Locomotion is paused so the player cannot move or turn while standing still for the measurement.
         rig.SuppressLocomotion();
         calibrationRoutine = StartCoroutine(ArmCalibration.Run(arms, SetArmStatus, OnArmCalibrationApplied, FinishArmCalibration));
         RefreshArmButtons();
@@ -331,10 +323,10 @@ public sealed class DoorMainMenu : MonoBehaviour
         if (!ArmsAvailable)
             return;
 
-        arms.ResetArmScales();
+        arms.ResetPlayerHeight();
         arms.SetWristRotationOffsets(Vector3.zero, Vector3.zero);
         RefreshArmControls();
-        SetArmStatus("ARMS RESET");
+        SetArmStatus("HEIGHT RESET");
         ScheduleSave();
     }
 
@@ -355,17 +347,11 @@ public sealed class DoorMainMenu : MonoBehaviour
     void RefreshArmControls()
     {
         var available = ArmsAvailable;
-        if (leftArmSlider != null)
+        if (heightSlider != null)
         {
-            leftArmSlider.interactable = available;
+            heightSlider.interactable = available;
             if (available)
-                leftArmSlider.SetValueWithoutNotify(arms.LeftArmScale);
-        }
-        if (rightArmSlider != null)
-        {
-            rightArmSlider.interactable = available;
-            if (available)
-                rightArmSlider.SetValueWithoutNotify(arms.RightArmScale);
+                heightSlider.SetValueWithoutNotify(arms.PlayerHeight * 100f);
         }
 
         if (!available)
@@ -377,8 +363,7 @@ public sealed class DoorMainMenu : MonoBehaviour
     void RefreshArmLabels()
     {
         var available = ArmsAvailable;
-        SetText(leftArmLabel, available ? $"LEFT ARM   {arms.LeftArmScale * 100f:0}%" : "LEFT ARM");
-        SetText(rightArmLabel, available ? $"RIGHT ARM   {arms.RightArmScale * 100f:0}%" : "RIGHT ARM");
+        SetText(heightLabel, available ? $"HEIGHT   {ArmCalibration.FormatHeight(arms.PlayerHeight)}" : "HEIGHT");
     }
 
     void RefreshArmButtons()
@@ -398,6 +383,11 @@ public sealed class DoorMainMenu : MonoBehaviour
         SetText(armStatusLabel, message);
     }
 
+    void SetArmStatus(string message, float progress)
+    {
+        SetArmStatus(progress >= 0f ? $"{message}\n{Mathf.RoundToInt(progress * 100f)}%" : message);
+    }
+
     // ---------- Helpers ----------
 
     void InitializeSliders()
@@ -407,8 +397,9 @@ public sealed class DoorMainMenu : MonoBehaviour
         InitializeSlider(turnSpeedSlider, ComfortSettings.MinTurnSpeed, ComfortSettings.MaxTurnSpeed, settings.TurnSpeed);
         InitializeSlider(vignetteStrengthSlider, ComfortSettings.MinVignetteStrength, ComfortSettings.MaxVignetteStrength, settings.VignetteStrength);
         InitializeSlider(masterVolumeSlider, 0f, 1f, AudioVolumeSettings.MasterVolume);
-        InitializeSlider(leftArmSlider, ArmsVRController.MinimumArmScale, ArmsVRController.MaximumArmScale, 1f);
-        InitializeSlider(rightArmSlider, ArmsVRController.MinimumArmScale, ArmsVRController.MaximumArmScale, 1f);
+        InitializeSlider(heightSlider, ArmsVRController.MinimumHeight * 100f, ArmsVRController.MaximumHeight * 100f, ArmsVRController.DefaultHeight * 100f);
+        if (heightSlider != null)
+            heightSlider.wholeNumbers = true;
     }
 
     static void InitializeSlider(Slider slider, float minimum, float maximum, float value)

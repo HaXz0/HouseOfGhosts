@@ -37,11 +37,11 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
     GameObject m_WristPosePage;
     GameObject m_CalibrationStatusObject;
     Text m_CalibrationStatusText;
-    Text m_ArmScaleLabel;
-    Text m_LeftArmScaleLabel;
-    Text m_RightArmScaleLabel;
-    Slider m_LeftArmScaleSlider;
-    Slider m_RightArmScaleSlider;
+    GameObject m_CalibrationProgressObject;
+    RectTransform m_CalibrationProgressFill;
+    Text m_HeightReadout;
+    Text m_HeightHintLabel;
+    Slider m_HeightSlider;
     readonly Slider[] m_WristPoseSliders = new Slider[6];
     readonly Text[] m_WristPoseLabels = new Text[6];
     Coroutine m_CalibrationRoutine;
@@ -258,7 +258,7 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         m_MainPage = CreateMenuPage("Movement Settings");
         m_MenuContent = m_MainPage.GetComponent<RectTransform>();
         CreateText("Title", "FIELD SETTINGS", new Vector2(-72f, 305f), new Vector2(285f, 44f), 27, TextAnchor.MiddleCenter, FontStyle.Bold);
-        CreateButton("Open Arm Settings", "CALIBRATE ARMS", new Vector2(158f, 305f), new Vector2(174f, 40f), () => SetArmPage(true));
+        CreateButton("Open Height Settings", "CALIBRATE", new Vector2(158f, 305f), new Vector2(174f, 40f), () => SetArmPage(true));
         CreateText("Movement Label", "MOVEMENT", new Vector2(-190f, 255f), new Vector2(400f, 28f), 19, TextAnchor.MiddleLeft, FontStyle.Bold);
         m_TeleportButton = CreateButton("Teleport", "TELEPORT", new Vector2(-108f, 215f), new Vector2(208f, 44f), () => SetMovementMode(false));
         m_SmoothMoveButton = CreateButton("Smooth Move", "WALK", new Vector2(108f, 215f), new Vector2(208f, 44f), () => SetMovementMode(true));
@@ -303,29 +303,29 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
             UpdateValueLabels();
         });
 
-        m_ArmPage = CreateMenuPage("Arm Calibration");
+        m_ArmPage = CreateMenuPage("Height Calibration");
         m_MenuContent = m_ArmPage.GetComponent<RectTransform>();
-        CreateText("Arm Title", "ARM CALIBRATION", new Vector2(-38f, 305f), new Vector2(320f, 44f), 25, TextAnchor.MiddleCenter, FontStyle.Bold);
+        CreateText("Height Title", "CALIBRATION", new Vector2(-38f, 305f), new Vector2(320f, 44f), 25, TextAnchor.MiddleCenter, FontStyle.Bold);
         CreateButton("Back to Settings", "BACK", new Vector2(-175f, 305f), new Vector2(90f, 40f), () => SetArmPage(false));
         CreateButton("Open Wrist Pose", "WRIST POSE", new Vector2(150f, 305f), new Vector2(130f, 40f), () => SetWristPosePage(true));
-        var leftStart = m_Arms != null ? m_Arms.LeftArmScale : 1f;
-        var rightStart = m_Arms != null ? m_Arms.RightArmScale : 1f;
-        m_LeftArmScaleLabel = CreateText("Left Arm Length Label", "LEFT ARM", new Vector2(0f, 230f), new Vector2(400f, 30f), 19, TextAnchor.MiddleLeft, FontStyle.Normal);
-        m_LeftArmScaleSlider = CreateSlider("Left Arm Length", new Vector2(0f, 195f), ArmsVRController.MinimumArmScale, ArmsVRController.MaximumArmScale, leftStart, SetLeftArmScale);
-        m_RightArmScaleLabel = CreateText("Right Arm Length Label", "RIGHT ARM", new Vector2(0f, 140f), new Vector2(400f, 30f), 19, TextAnchor.MiddleLeft, FontStyle.Normal);
-        m_RightArmScaleSlider = CreateSlider("Right Arm Length", new Vector2(0f, 105f), ArmsVRController.MinimumArmScale, ArmsVRController.MaximumArmScale, rightStart, SetRightArmScale);
-        m_ArmScaleLabel = CreateText("Calibration Value Label", "T-pose estimates reach; adjust for comfort", new Vector2(0f, 52f), new Vector2(420f, 36f), 17, TextAnchor.MiddleCenter, FontStyle.Normal);
-        var calibrateButton = CreateButton("Calibrate Arms", "CALIBRATE ARMS", new Vector2(0f, -25f), new Vector2(360f, 48f), StartArmCalibration);
-        var resetButton = CreateButton("Reset Arms", "RESET ARMS", new Vector2(0f, -90f), new Vector2(360f, 48f), ResetArmCalibration);
+        CreateText("Height Caption", "YOUR HEIGHT", new Vector2(0f, 250f), new Vector2(400f, 28f), 18, TextAnchor.MiddleCenter, FontStyle.Normal);
+        m_HeightReadout = CreateText("Height Readout", "--", new Vector2(0f, 200f), new Vector2(400f, 70f), 58, TextAnchor.MiddleCenter, FontStyle.Bold);
+        m_HeightReadout.color = k_AccentColor;
+        var heightStart = m_Arms != null ? m_Arms.PlayerHeight : ArmsVRController.DefaultHeight;
+        CreateText("Height Slider Label", "FINE-TUNE", new Vector2(0f, 140f), new Vector2(400f, 26f), 17, TextAnchor.MiddleLeft, FontStyle.Normal);
+        m_HeightSlider = CreateSlider("Player Height", new Vector2(0f, 110f), ArmsVRController.MinimumHeight * 100f, ArmsVRController.MaximumHeight * 100f, heightStart * 100f, SetPlayerHeightCentimeters);
+        m_HeightSlider.wholeNumbers = true;
+        m_HeightHintLabel = CreateText("Calibration Hint", "Stand up straight, look ahead,\nthen press CALIBRATE", new Vector2(0f, 55f), new Vector2(420f, 50f), 17, TextAnchor.MiddleCenter, FontStyle.Italic);
+        var calibrateButton = CreateButton("Calibrate Height", "CALIBRATE", new Vector2(0f, -25f), new Vector2(360f, 48f), StartArmCalibration);
+        var resetButton = CreateButton("Reset Height", "RESET", new Vector2(0f, -90f), new Vector2(360f, 48f), ResetArmCalibration);
         CreateButton("Cancel Calibration", "CANCEL CALIBRATION", new Vector2(0f, -155f), new Vector2(360f, 48f), CancelCalibration);
         if (m_Arms == null || !m_Arms.isActiveAndEnabled)
         {
             calibrateButton.interactable = false;
             resetButton.interactable = false;
-            m_LeftArmScaleSlider.interactable = false;
-            m_RightArmScaleSlider.interactable = false;
+            m_HeightSlider.interactable = false;
         }
-        UpdateArmScaleLabel();
+        RefreshHeightControls();
         CreateWristPosePage();
         SetArmPage(false);
 
@@ -380,23 +380,13 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
             RefreshWristPoseControls();
     }
 
-    void SetLeftArmScale(float value)
+    void SetPlayerHeightCentimeters(float centimeters)
     {
         if (m_Arms == null || !m_Arms.isActiveAndEnabled)
             return;
 
-        m_Arms.SetLeftArmScale(value);
-        UpdateArmScaleLabel();
-        ScheduleSave();
-    }
-
-    void SetRightArmScale(float value)
-    {
-        if (m_Arms == null || !m_Arms.isActiveAndEnabled)
-            return;
-
-        m_Arms.SetRightArmScale(value);
-        UpdateArmScaleLabel();
+        m_Arms.SetPlayerHeight(centimeters / 100f);
+        RefreshHeightControls();
         ScheduleSave();
     }
 
@@ -406,25 +396,22 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
         if (m_Arms == null || !m_Arms.isActiveAndEnabled)
             return;
 
-        m_Arms.ResetArmScales();
+        m_Arms.ResetPlayerHeight();
         m_Arms.SetWristRotationOffsets(Vector3.zero, Vector3.zero);
-        m_LeftArmScaleSlider.SetValueWithoutNotify(1f);
-        m_RightArmScaleSlider.SetValueWithoutNotify(1f);
         RefreshWristPoseControls();
-        UpdateArmScaleLabel();
+        RefreshHeightControls();
         ScheduleSave();
     }
 
-    void UpdateArmScaleLabel()
+    void RefreshHeightControls()
     {
-        if (m_ArmScaleLabel != null)
-            m_ArmScaleLabel.text = m_Arms != null && m_Arms.isActiveAndEnabled
-                ? "T-pose gives an estimate; use sliders to fine-tune"
-                : "ARMS UNAVAILABLE";
-        if (m_LeftArmScaleLabel != null && m_Arms != null)
-            m_LeftArmScaleLabel.text = $"LEFT ARM   {m_Arms.LeftArmScale * 100f:0}%";
-        if (m_RightArmScaleLabel != null && m_Arms != null)
-            m_RightArmScaleLabel.text = $"RIGHT ARM   {m_Arms.RightArmScale * 100f:0}%";
+        var available = m_Arms != null && m_Arms.isActiveAndEnabled;
+        if (m_HeightReadout != null)
+            m_HeightReadout.text = available ? ArmCalibration.FormatHeight(m_Arms.PlayerHeight) : "--";
+        if (m_HeightSlider != null && available)
+            m_HeightSlider.SetValueWithoutNotify(m_Arms.PlayerHeight * 100f);
+        if (m_HeightHintLabel != null && !available)
+            m_HeightHintLabel.text = "ARMS UNAVAILABLE";
     }
 
     void CreateWristPosePage()
@@ -530,9 +517,7 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
 
     void OnArmCalibrationApplied()
     {
-        m_LeftArmScaleSlider.SetValueWithoutNotify(m_Arms.LeftArmScale);
-        m_RightArmScaleSlider.SetValueWithoutNotify(m_Arms.RightArmScale);
-        UpdateArmScaleLabel();
+        RefreshHeightControls();
         ScheduleSave();
     }
 
@@ -550,7 +535,7 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
     {
         m_IsCalibrating = false;
         m_CalibrationRoutine = null;
-        SetCalibrationStatus(message);
+        SetCalibrationStatus(message, ArmCalibration.NoProgress);
         if (!m_MenuVisible)
             RestoreLocomotionProviders();
         m_HideCalibrationStatusRoutine = StartCoroutine(HideCalibrationStatus());
@@ -579,16 +564,29 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
             background.raycastTarget = false;
             var textObject = new GameObject("Status Text", typeof(RectTransform), typeof(Text));
             textObject.transform.SetParent(statusRect, false);
-            SetRect(textObject.GetComponent<RectTransform>(), Vector2.zero, new Vector2(660f, 210f));
+            SetRect(textObject.GetComponent<RectTransform>(), new Vector2(0f, 15f), new Vector2(660f, 180f));
             m_CalibrationStatusText = textObject.GetComponent<Text>();
             m_CalibrationStatusText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             m_CalibrationStatusText.fontSize = 34;
             m_CalibrationStatusText.alignment = TextAnchor.MiddleCenter;
             m_CalibrationStatusText.color = k_TextColor;
             m_CalibrationStatusText.raycastTarget = false;
+
+            var progressTrack = CreateImage("Progress Track", statusRect, new Vector2(0f, -90f), new Vector2(560f, 14f), k_ControlColor);
+            progressTrack.raycastTarget = false;
+            m_CalibrationProgressObject = progressTrack.gameObject;
+            var progressFill = CreateImage("Progress Fill", progressTrack.rectTransform, Vector2.zero, Vector2.zero, k_AccentColor);
+            progressFill.raycastTarget = false;
+            m_CalibrationProgressFill = progressFill.rectTransform;
+            m_CalibrationProgressFill.anchorMin = Vector2.zero;
+            m_CalibrationProgressFill.anchorMax = new Vector2(0f, 1f);
+            m_CalibrationProgressFill.pivot = new Vector2(0f, 0.5f);
+            m_CalibrationProgressFill.anchoredPosition = Vector2.zero;
+            m_CalibrationProgressFill.sizeDelta = Vector2.zero;
         }
 
         m_CalibrationStatusObject.SetActive(true);
+        SetCalibrationStatus(string.Empty, ArmCalibration.NoProgress);
         PlaceCalibrationStatusInFrontOfPlayer();
     }
 
@@ -603,10 +601,17 @@ public class PlayerTestSceneComfortSettings : MonoBehaviour
             Quaternion.LookRotation(forward, Vector3.up));
     }
 
-    void SetCalibrationStatus(string message)
+    void SetCalibrationStatus(string message, float progress)
     {
         if (m_CalibrationStatusText != null)
             m_CalibrationStatusText.text = message;
+        if (m_CalibrationProgressObject != null)
+        {
+            var showProgress = progress >= 0f;
+            m_CalibrationProgressObject.SetActive(showProgress);
+            if (showProgress)
+                m_CalibrationProgressFill.anchorMax = new Vector2(Mathf.Clamp01(progress), 1f);
+        }
     }
 
     void SetMenuVisible(bool visible)

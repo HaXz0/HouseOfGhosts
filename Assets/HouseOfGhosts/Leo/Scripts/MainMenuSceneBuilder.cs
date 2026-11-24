@@ -374,19 +374,18 @@ static class MainMenuSceneBuilder
 
     static void BuildArmsPage(RectTransform canvas, DoorMainMenu menu, SerializedObject refs)
     {
-        var page = CreatePage("Arm Calibration Page", canvas);
+        var page = CreatePage("Height Calibration Page", canvas);
         SetReference(refs, "armsPage", page.gameObject);
-        CreatePageHeader(page, "ARM CALIBRATION", menu.ShowSettingsPage);
+        CreatePageHeader(page, "HEIGHT CALIBRATION", menu.ShowSettingsPage);
 
-        CreateLabeledSlider(page, refs, "Left Arm", 270f, ArmsVRController.MinimumArmScale, ArmsVRController.MaximumArmScale, "leftArmSlider", "leftArmLabel", menu.SetLeftArmScale);
-        CreateLabeledSlider(page, refs, "Right Arm", 170f, ArmsVRController.MinimumArmScale, ArmsVRController.MaximumArmScale, "rightArmSlider", "rightArmLabel", menu.SetRightArmScale);
+        CreateLabeledSlider(page, refs, "Height", 250f, ArmsVRController.MinimumHeight * 100f, ArmsVRController.MaximumHeight * 100f, "heightSlider", "heightLabel", menu.SetPlayerHeight);
 
-        var status = CreateText("Status", page, "", new Vector2(0f, 40f), new Vector2(820f, 120f), 28, TextAlignmentOptions.Center, FontStyles.Normal);
+        var status = CreateText("Status", page, "", new Vector2(0f, 60f), new Vector2(820f, 160f), 28, TextAlignmentOptions.Center, FontStyles.Normal);
         status.color = k_AccentColor;
         SetReference(refs, "armStatusLabel", status);
 
-        var calibrate = CreateButton("Calibrate Button", page, "CALIBRATE ARMS", new Vector2(0f, -90f), new Vector2(600f, 72f), 32);
-        var reset = CreateButton("Reset Button", page, "RESET ARMS", new Vector2(0f, -180f), new Vector2(600f, 72f), 32);
+        var calibrate = CreateButton("Calibrate Button", page, "CALIBRATE", new Vector2(0f, -90f), new Vector2(600f, 72f), 32);
+        var reset = CreateButton("Reset Button", page, "RESET", new Vector2(0f, -180f), new Vector2(600f, 72f), 32);
         var cancel = CreateButton("Cancel Button", page, "CANCEL CALIBRATION", new Vector2(0f, -270f), new Vector2(600f, 72f), 32);
         AddClick(calibrate, menu.StartArmCalibration);
         AddClick(reset, menu.ResetArms);
