@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Unity.XR.CoreUtils;
 using UnityEngine;
 using UnityEngine.Animations;
@@ -16,8 +17,13 @@ public sealed class ArmsVRController : MonoBehaviour
     const string LegacyRightArmScaleKey = "PlayerTestScene.RightArmScale";
     const string LeftWristRotationKey = "PlayerTestScene.LeftWristRotation";
     const string RightWristRotationKey = "PlayerTestScene.RightWristRotation";
+    // Bumped when the hand pose source changes, so wrist offsets tuned for the old pose are reset once.
+    const string HandPoseVersionKey = "PlayerTestScene.HandPoseVersion";
+    const int k_HandPoseVersion = 2;
     const float k_MinimumArmScale = 0.5f;
     const float k_MaximumArmScale = 1.6f;
+    const float k_MinimumHandScale = 0.6f;
+    const float k_MaximumHandScale = 1.4f;
     const float k_TrackingFadeSeconds = 0.16f;
 
     // Player height range in meters, used by the calibration and the height sliders.
@@ -29,11 +35,13 @@ public sealed class ArmsVRController : MonoBehaviour
     // Eyes sit at ~93.6% of height; shoulder-to-wrist (upper arm + forearm) is ~33.2%.
     const float k_EyeHeightRatio = 0.936f;
     const float k_ArmLengthRatio = 0.332f;
+    // Wrist crease to middle fingertip is ~10.8% of height.
+    const float k_HandLengthRatio = 0.108f;
     // The serialized shoulder offset is tuned for this height and scales linearly from it.
     const float k_ShoulderOffsetReferenceHeight = 1.75f;
 
-    // Base hand pose relative to each controller. The hand bone's fingers point along its local Y axis,
-    // so Y follows the controller's forward and the palm faces inward.
+    // Base hand pose relative to the controller grip pose. The hand bone's fingers point along its local Y axis
+    // and the palm faces its local -Z, so Y follows the grip's forward and the palm faces inward.
     static readonly Quaternion k_LeftHandOrientation = Quaternion.LookRotation(Vector3.left, Vector3.forward);
     static readonly Quaternion k_RightHandOrientation = Quaternion.LookRotation(Vector3.right, Vector3.forward);
 
@@ -45,6 +53,8 @@ public sealed class ArmsVRController : MonoBehaviour
         public TransformStreamHandle rightWrist;
         public float leftScale;
         public float rightScale;
+        public float leftHandScale;
+        public float rightHandScale;
 
         public void ProcessAnimation(AnimationStream stream)
         {
@@ -52,9 +62,36 @@ public sealed class ArmsVRController : MonoBehaviour
             leftWrist.SetLocalPosition(stream, leftWrist.GetLocalPosition(stream) * leftScale);
             rightElbow.SetLocalPosition(stream, rightElbow.GetLocalPosition(stream) * rightScale);
             rightWrist.SetLocalPosition(stream, rightWrist.GetLocalPosition(stream) * rightScale);
+            leftWrist.SetLocalScale(stream, leftWrist.GetLocalScale(stream) * leftHandScale);
+            rightWrist.SetLocalScale(stream, rightWrist.GetLocalScale(stream) * rightHandScale);
         }
 
         public void ProcessRootMotion(AnimationStream stream) { }
+    }
+
+    // Finger groups in layer order: index (trigger), middle/ring/pinky (grip), thumb (button touch).
+    static readonly string[][] k_FingerGroupBones =
+    {
+        new[] { "Index" },
+        new[] { "Middle", "Ring", "Pinky" },
+        new[] { "Thumb" },
+    };
+
+    // Per-hand input and finger animation state. Each finger group scrubs its own masked copy of the squeeze clip.
+    sealed class HandRig
+    {
+        public InputAction grip;
+        public InputAction trigger;
+        public InputAction tracked;
+        public InputAction gripPosition;
+        public InputAction gripRotation;
+        public InputAction thumbTouch;
+        public readonly AnimationClipPlayable[] fingerPlayables = new AnimationClipPlayable[3];
+        public readonly AvatarMask[] fingerMasks = new AvatarMask[3];
+        public readonly float[] fingerCurl = new float[3];
+        public Vector3 palmFromWrist;
+        public float modelHandLength;
+        public float handScale = 1f;
     }
 
     [SerializeField] Transform head;
@@ -90,19 +127,25 @@ public sealed class ArmsVRController : MonoBehaviour
     [SerializeField, Range(5f, 60f)] float handRotationSharpness = 16f;
     [SerializeField, Range(2f, 40f)] float elbowSharpness = 10f;
 
+    [Header("Hand Fit")]
+    [Tooltip("Tilt of the hand relative to the controller grip pose, in degrees. Positive tilts the fingers down.")]
+    [SerializeField, Range(-90f, 90f)] float gripPitch = 45f;
+    [Tooltip("Distance from the palm bone to the centre of the controller handle at the default hand size.")]
+    [SerializeField, Range(0f, 0.08f)] float palmToGripDistance = 0.035f;
+    [Tooltip("Where along the palm the handle sits (0 = wrist, 1 = middle knuckle).")]
+    [SerializeField, Range(0f, 1f)] float gripAlongPalm = 0.55f;
+    [Tooltip("Higher = fingers react faster to the buttons.")]
+    [SerializeField, Range(5f, 60f)] float fingerSharpness = 25f;
+
     Animator animator;
     RigBuilder rigBuilder;
     PlayableGraph graph;
-    AnimationClipPlayable leftGripPlayable;
-    AnimationClipPlayable rightGripPlayable;
     AnimationScriptPlayable armLengthPlayable;
-    AvatarMask leftMask;
-    AvatarMask rightMask;
     Avatar runtimeAvatar;
-    InputAction leftGrip;
-    InputAction rightGrip;
-    InputAction leftTracked;
-    InputAction rightTracked;
+    readonly HandRig leftRig = new HandRig();
+    readonly HandRig rightRig = new HandRig();
+    readonly List<InputAction> enabledSharedActions = new List<InputAction>();
+    readonly List<InputAction> ownedActions = new List<InputAction>();
     Vector3 shoulderCenterInModel;
     Pose leftPose;
     Pose rightPose;
@@ -122,10 +165,6 @@ public sealed class ArmsVRController : MonoBehaviour
     float baselineLeftArmLength;
     float baselineRightArmLength;
     bool baselineCaptured;
-    bool ownsLeftGripAction;
-    bool ownsRightGripAction;
-    bool ownsLeftTrackingAction;
-    bool ownsRightTrackingAction;
 
     /// <summary>Player standing height in meters.</summary>
     public float PlayerHeight => playerHeight;
@@ -160,21 +199,12 @@ public sealed class ArmsVRController : MonoBehaviour
             animator.Rebind();
         }
 
-        leftGrip = actions.FindAction("XRI Left Interaction/Select Value");
-        rightGrip = actions.FindAction("XRI Right Interaction/Select Value");
-        leftTracked = actions.FindAction("XRI Left/Is Tracked");
-        rightTracked = actions.FindAction("XRI Right/Is Tracked");
-        if (leftGrip == null || rightGrip == null || leftTracked == null || rightTracked == null)
+        if (!BindHandInput(leftRig, "Left", "LeftHand") || !BindHandInput(rightRig, "Right", "RightHand"))
         {
             Debug.LogError("ArmsVR could not find the existing grip or tracking actions.", this);
             UseFallbackHands();
             return;
         }
-
-        EnableActionIfNeeded(leftGrip, ref ownsLeftGripAction);
-        EnableActionIfNeeded(rightGrip, ref ownsRightGripAction);
-        EnableActionIfNeeded(leftTracked, ref ownsLeftTrackingAction);
-        EnableActionIfNeeded(rightTracked, ref ownsRightTrackingAction);
 
         if (!baselineCaptured)
         {
@@ -183,12 +213,15 @@ public sealed class ArmsVRController : MonoBehaviour
                 Vector3.Distance(leftHand.parent.position, leftHand.position);
             baselineRightArmLength = Vector3.Distance(rightShoulder.position, rightHand.parent.position) +
                 Vector3.Distance(rightHand.parent.position, rightHand.position);
+            MeasureHand(leftHand, leftRig);
+            MeasureHand(rightHand, rightRig);
             baselineCaptured = true;
         }
         bodyRotation = transform.rotation;
         xrOrigin = head.GetComponentInParent<XROrigin>();
         playerHeight = LoadPlayerHeight();
         UpdateArmScalesFromHeight();
+        ResetOutdatedWristOffsets();
         leftWristRotationOffset = LoadWristRotation(LeftWristRotationKey, leftWristRotationOffset);
         rightWristRotationOffset = LoadWristRotation(RightWristRotationKey, rightWristRotationOffset);
         leftConstraint.weight = 0f;
@@ -205,33 +238,117 @@ public sealed class ArmsVRController : MonoBehaviour
         }
     }
 
+    bool BindHandInput(HandRig hand, string side, string usage)
+    {
+        hand.grip = actions.FindAction($"XRI {side} Interaction/Select Value");
+        hand.trigger = actions.FindAction($"XRI {side} Interaction/Activate Value");
+        hand.tracked = actions.FindAction($"XRI {side}/Is Tracked");
+        if (hand.grip == null || hand.tracked == null)
+            return false;
+
+        EnableSharedAction(hand.grip);
+        EnableSharedAction(hand.trigger);
+        EnableSharedAction(hand.tracked);
+
+        // The XRI controller transforms follow the aim pose (pointer). The hands need the grip pose,
+        // which OpenXR exposes as devicePosition/deviceRotation: the centre of the handle.
+        hand.gripPosition = CreateOwnedAction($"{side} Grip Position", InputActionType.Value, "Vector3",
+            $"<XRController>{{{usage}}}/devicePosition");
+        hand.gripRotation = CreateOwnedAction($"{side} Grip Rotation", InputActionType.Value, "Quaternion",
+            $"<XRController>{{{usage}}}/deviceRotation");
+        hand.thumbTouch = CreateOwnedAction($"{side} Thumb Touch", InputActionType.PassThrough, "Button",
+            $"<XRController>{{{usage}}}/thumbstickTouched", $"<XRController>{{{usage}}}/primaryTouched",
+            $"<XRController>{{{usage}}}/secondaryTouched", $"<XRController>{{{usage}}}/thumbrestTouched");
+        return true;
+    }
+
+    InputAction CreateOwnedAction(string name, InputActionType type, string controlType, params string[] bindings)
+    {
+        var action = new InputAction(name, type, expectedControlType: controlType);
+        foreach (var binding in bindings)
+            action.AddBinding(binding);
+        action.Enable();
+        ownedActions.Add(action);
+        return action;
+    }
+
+    void EnableSharedAction(InputAction action)
+    {
+        if (action == null || action.enabled)
+            return;
+
+        action.Enable();
+        enabledSharedActions.Add(action);
+    }
+
+    // Measures the model's hand in world units so it can be scaled to the player's height and its palm
+    // placed on the controller handle.
+    static void MeasureHand(Transform hand, HandRig rig)
+    {
+        var middle1 = FindFingerBone(hand, "Middle", 1);
+        var middle2 = FindFingerBone(hand, "Middle", 2);
+        var middle3 = FindFingerBone(hand, "Middle", 3);
+        var toRotationSpace = Quaternion.Inverse(hand.rotation);
+        if (middle1 == null)
+        {
+            rig.palmFromWrist = Vector3.up * 0.09f;
+            rig.modelHandLength = 0f;
+            return;
+        }
+
+        rig.palmFromWrist = toRotationSpace * (middle1.position - hand.position);
+        var length = rig.palmFromWrist.magnitude;
+        if (middle2 != null)
+        {
+            length += Vector3.Distance(middle1.position, middle2.position);
+            if (middle3 != null)
+            {
+                var lastSegment = Vector3.Distance(middle2.position, middle3.position);
+                // The fingertip has no bone; estimate it from the previous segment.
+                length += lastSegment * 1.8f;
+            }
+        }
+        rig.modelHandLength = length;
+    }
+
+    static Transform FindFingerBone(Transform hand, string finger, int joint)
+    {
+        foreach (var bone in hand.GetComponentsInChildren<Transform>(true))
+        {
+            if (bone.name.StartsWith(finger + joint, StringComparison.OrdinalIgnoreCase))
+                return bone;
+        }
+        return null;
+    }
+
+    static void ResetOutdatedWristOffsets()
+    {
+        if (PlayerPrefs.GetInt(HandPoseVersionKey, 0) >= k_HandPoseVersion)
+            return;
+
+        PlayerPrefs.DeleteKey(LeftWristRotationKey);
+        PlayerPrefs.DeleteKey(RightWristRotationKey);
+        PlayerPrefs.SetInt(HandPoseVersionKey, k_HandPoseVersion);
+    }
+
     bool BuildGraph()
     {
         rigBuilder.enabled = false;
         graph = PlayableGraph.Create("ArmsVR Animation and IK");
         graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-        var layers = AnimationLayerMixerPlayable.Create(graph, 3);
+        // Layer 0 is the open hand; each hand then has one masked layer per finger group.
+        var layers = AnimationLayerMixerPlayable.Create(graph, 7);
         var rest = AnimationClipPlayable.Create(graph, leftGripClip);
-        leftGripPlayable = AnimationClipPlayable.Create(graph, leftGripClip);
-        rightGripPlayable = AnimationClipPlayable.Create(graph, rightGripClip);
         rest.SetSpeed(0d);
-        leftGripPlayable.SetSpeed(0d);
-        rightGripPlayable.SetSpeed(0d);
         graph.Connect(rest, 0, layers, 0);
-        graph.Connect(leftGripPlayable, 0, layers, 1);
-        graph.Connect(rightGripPlayable, 0, layers, 2);
         layers.SetInputWeight(0, 1f);
-        layers.SetInputWeight(1, 1f);
-        layers.SetInputWeight(2, 1f);
-        leftMask = CreateFingerMask(leftHand);
-        rightMask = CreateFingerMask(rightHand);
-        if (leftMask == null || rightMask == null)
+        if (!AddFingerLayers(layers, 1, leftHand, leftGripClip, leftRig) ||
+            !AddFingerLayers(layers, 4, rightHand, rightGripClip, rightRig))
         {
             Debug.LogError("ArmsVR could not create independent finger masks for both hands.", this);
             return false;
         }
-        layers.SetLayerMaskFromAvatarMask(1, leftMask);
-        layers.SetLayerMaskFromAvatarMask(2, rightMask);
+
         var lengthJob = new ArmLengthJob
         {
             leftElbow = animator.BindStreamTransform(leftHand.parent),
@@ -240,6 +357,8 @@ public sealed class ArmsVRController : MonoBehaviour
             rightWrist = animator.BindStreamTransform(rightHand),
             leftScale = leftArmScale,
             rightScale = rightArmScale,
+            leftHandScale = leftRig.handScale,
+            rightHandScale = rightRig.handScale,
         };
         armLengthPlayable = AnimationScriptPlayable.Create(graph, lengthJob, 1);
         graph.Connect(layers, 0, armLengthPlayable, 0);
@@ -257,7 +376,26 @@ public sealed class ArmsVRController : MonoBehaviour
         return true;
     }
 
-    AvatarMask CreateFingerMask(Transform hand)
+    bool AddFingerLayers(AnimationLayerMixerPlayable layers, int firstLayer, Transform hand, AnimationClip clip, HandRig rig)
+    {
+        for (var group = 0; group < 3; group++)
+        {
+            var mask = CreateFingerMask(hand, k_FingerGroupBones[group]);
+            if (mask == null)
+                return false;
+
+            var playable = AnimationClipPlayable.Create(graph, clip);
+            playable.SetSpeed(0d);
+            graph.Connect(playable, 0, layers, firstLayer + group);
+            layers.SetInputWeight(firstLayer + group, 1f);
+            layers.SetLayerMaskFromAvatarMask((uint)(firstLayer + group), mask);
+            rig.fingerPlayables[group] = playable;
+            rig.fingerMasks[group] = mask;
+        }
+        return true;
+    }
+
+    AvatarMask CreateFingerMask(Transform hand, string[] fingerNames)
     {
         var mask = new AvatarMask();
         mask.AddTransformPath(animator.transform, true);
@@ -266,8 +404,7 @@ public sealed class ArmsVRController : MonoBehaviour
         for (var index = 0; index < mask.transformCount; index++)
         {
             var path = mask.GetTransformPath(index);
-            var isFinger = path.StartsWith(handPath + "/", StringComparison.Ordinal) ||
-                path.Contains("/" + handPath + "/");
+            var isFinger = IsFingerPath(path, handPath, fingerNames);
             mask.SetTransformActive(index, isFinger);
             if (isFinger)
                 activeCount++;
@@ -278,6 +415,31 @@ public sealed class ArmsVRController : MonoBehaviour
             return null;
         }
         return mask;
+    }
+
+    // True when the path is below the hand and its first bone under the hand belongs to one of the fingers.
+    static bool IsFingerPath(string path, string handPath, string[] fingerNames)
+    {
+        int handIndex;
+        if (path.StartsWith(handPath + "/", StringComparison.Ordinal))
+        {
+            handIndex = 0;
+        }
+        else
+        {
+            var found = path.IndexOf("/" + handPath + "/", StringComparison.Ordinal);
+            if (found < 0)
+                return false;
+            handIndex = found + 1;
+        }
+
+        var fingerStart = handIndex + handPath.Length + 1;
+        foreach (var finger in fingerNames)
+        {
+            if (string.Compare(path, fingerStart, finger, 0, finger.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                return true;
+        }
+        return false;
     }
 
     static string GetRelativePath(Transform root, Transform child)
@@ -304,8 +466,8 @@ public sealed class ArmsVRController : MonoBehaviour
         var scaledShoulderOffset = shoulderOffset * (playerHeight / k_ShoulderOffsetReferenceHeight);
         transform.position = head.position + bodyRotation * scaledShoulderOffset - transform.TransformVector(shoulderCenterInModel);
 
-        UpdateTarget(leftController, leftTarget, leftTracked, leftWristPositionOffset, k_LeftHandOrientation, leftWristRotationOffset, ref leftPose, ref hasLeftPose, ref leftConstraintWeight);
-        UpdateTarget(rightController, rightTarget, rightTracked, rightWristPositionOffset, k_RightHandOrientation, rightWristRotationOffset, ref rightPose, ref hasRightPose, ref rightConstraintWeight);
+        UpdateTarget(leftController, leftTarget, leftRig, leftWristPositionOffset, k_LeftHandOrientation, leftWristRotationOffset, ref leftPose, ref hasLeftPose, ref leftConstraintWeight);
+        UpdateTarget(rightController, rightTarget, rightRig, rightWristPositionOffset, k_RightHandOrientation, rightWristRotationOffset, ref rightPose, ref hasRightPose, ref rightConstraintWeight);
         leftConstraint.weight = leftConstraintWeight;
         rightConstraint.weight = rightConstraintWeight;
         leftTarget.position = SoftenReach(leftShoulder.position, leftHand.parent.position, leftHand.position, leftTarget.position);
@@ -313,24 +475,25 @@ public sealed class ArmsVRController : MonoBehaviour
         UpdateElbowHint(leftShoulder, leftHand, leftTarget, leftHint, leftController.parent, -1f, ref leftHintLocal, ref hasLeftHint);
         UpdateElbowHint(rightShoulder, rightHand, rightTarget, rightHint, rightController.parent, 1f, ref rightHintLocal, ref hasRightHint);
 
-        leftGripPlayable.SetTime(ReadGrip(leftGrip) * Math.Max(0d, leftGripClip.length - 0.0001d));
-        rightGripPlayable.SetTime(ReadGrip(rightGrip) * Math.Max(0d, rightGripClip.length - 0.0001d));
+        UpdateFingers(leftRig, leftGripClip);
+        UpdateFingers(rightRig, rightGripClip);
         rigBuilder.SyncLayers();
         graph.Evaluate(Time.deltaTime);
     }
 
     // The pose is smoothed in the controllers' parent space (inside the XR Origin), so walking,
     // teleporting and snap turning never make the arms trail behind the player.
-    void UpdateTarget(Transform controller, Transform target, InputAction tracking, Vector3 positionOffset, Quaternion handOrientation, Vector3 rotationOffset, ref Pose smoothedLocalPose, ref bool hasPose, ref float constraintWeight)
+    void UpdateTarget(Transform controller, Transform target, HandRig hand, Vector3 positionOffset, Quaternion handOrientation, Vector3 rotationOffset, ref Pose smoothedLocalPose, ref bool hasPose, ref float constraintWeight)
     {
         var space = controller.parent;
-        var tracked = tracking.enabled && tracking.IsPressed();
+        var tracked = hand.tracked.enabled && hand.tracked.IsPressed();
         if (tracked)
         {
-            var worldPosition = controller.TransformPoint(positionOffset);
-            var worldRotation = controller.rotation * handOrientation * Quaternion.Euler(rotationOffset);
-            var localPosition = space != null ? space.InverseTransformPoint(worldPosition) : worldPosition;
-            var localRotation = space != null ? Quaternion.Inverse(space.rotation) * worldRotation : worldRotation;
+            var gripPose = ReadGripPose(controller, space, hand);
+            var localRotation = gripPose.rotation * Quaternion.Euler(gripPitch, 0f, 0f) * handOrientation * Quaternion.Euler(rotationOffset);
+            // Place the palm on the handle: the wrist sits behind the grip point along the palm, offset away from the palm.
+            var palmPoint = hand.palmFromWrist * gripAlongPalm + Vector3.back * palmToGripDistance;
+            var localPosition = gripPose.position + gripPose.rotation * positionOffset - localRotation * (palmPoint * hand.handScale);
 
             if (!hasPose)
             {
@@ -354,6 +517,35 @@ public sealed class ArmsVRController : MonoBehaviour
 
         var desiredWeight = tracked && hasPose ? 1f : 0f;
         constraintWeight = Mathf.MoveTowards(constraintWeight, desiredWeight, Time.deltaTime / k_TrackingFadeSeconds);
+    }
+
+    // Grip pose in the controllers' parent (tracking) space. Falls back to the controller transform without grip data.
+    static Pose ReadGripPose(Transform controller, Transform space, HandRig hand)
+    {
+        if (hand.gripPosition.activeControl != null && hand.gripRotation.activeControl != null)
+        {
+            var position = hand.gripPosition.ReadValue<Vector3>();
+            var rotation = hand.gripRotation.ReadValue<Quaternion>();
+            if (IsFinite(position) && rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z + rotation.w * rotation.w > 0.5f)
+                return new Pose(position, rotation);
+        }
+
+        var localPosition = space != null ? space.InverseTransformPoint(controller.position) : controller.position;
+        var localRotation = space != null ? Quaternion.Inverse(space.rotation) * controller.rotation : controller.rotation;
+        return new Pose(localPosition, localRotation);
+    }
+
+    void UpdateFingers(HandRig hand, AnimationClip clip)
+    {
+        var grip = ReadAxis(hand.grip);
+        var targets = new Vector3(ReadAxis(hand.trigger), grip, hand.thumbTouch.IsPressed() ? 1f : 0f);
+        var blend = SmoothingBlend(fingerSharpness);
+        var clipEnd = Math.Max(0d, clip.length - 0.0001d);
+        for (var group = 0; group < 3; group++)
+        {
+            hand.fingerCurl[group] = Mathf.Lerp(hand.fingerCurl[group], targets[group], blend);
+            hand.fingerPlayables[group].SetTime(hand.fingerCurl[group] * clipEnd);
+        }
     }
 
     static float SmoothingBlend(float sharpness)
@@ -401,18 +593,9 @@ public sealed class ArmsVRController : MonoBehaviour
         hint.position = space != null ? space.TransformPoint(smoothedLocalHint) : smoothedLocalHint;
     }
 
-    static float ReadGrip(InputAction grip)
+    static float ReadAxis(InputAction action)
     {
-        return grip.enabled ? Mathf.Clamp01(grip.ReadValue<float>()) : 0f;
-    }
-
-    static void EnableActionIfNeeded(InputAction action, ref bool enabledHere)
-    {
-        if (action.enabled)
-            return;
-
-        action.Enable();
-        enabledHere = true;
+        return action != null && action.enabled ? Mathf.Clamp01(action.ReadValue<float>()) : 0f;
     }
 
     /// <summary>Sets the player's standing height in meters and rescales the arms and shoulders to match.</summary>
@@ -443,11 +626,16 @@ public sealed class ArmsVRController : MonoBehaviour
         var targetArmLength = playerHeight * k_ArmLengthRatio;
         leftArmScale = EstimateArmScale(targetArmLength, baselineLeftArmLength);
         rightArmScale = EstimateArmScale(targetArmLength, baselineRightArmLength);
+        var targetHandLength = playerHeight * k_HandLengthRatio;
+        leftRig.handScale = EstimateHandScale(targetHandLength, leftRig.modelHandLength);
+        rightRig.handScale = EstimateHandScale(targetHandLength, rightRig.modelHandLength);
         if (armLengthPlayable.IsValid())
         {
             var job = armLengthPlayable.GetJobData<ArmLengthJob>();
             job.leftScale = leftArmScale;
             job.rightScale = rightArmScale;
+            job.leftHandScale = leftRig.handScale;
+            job.rightHandScale = rightRig.handScale;
             armLengthPlayable.SetJobData(job);
         }
     }
@@ -459,6 +647,15 @@ public sealed class ArmsVRController : MonoBehaviour
 
         var scale = targetArmLength / baselineArmLength;
         return IsFinite(scale) ? Mathf.Clamp(scale, k_MinimumArmScale, k_MaximumArmScale) : 1f;
+    }
+
+    static float EstimateHandScale(float targetHandLength, float modelHandLength)
+    {
+        if (!IsFinite(modelHandLength) || modelHandLength < 0.03f)
+            return 1f;
+
+        var scale = targetHandLength / modelHandLength;
+        return IsFinite(scale) ? Mathf.Clamp(scale, k_MinimumHandScale, k_MaximumHandScale) : 1f;
     }
 
     static float LoadPlayerHeight()
@@ -552,22 +749,22 @@ public sealed class ArmsVRController : MonoBehaviour
 
     void OnDisable()
     {
-        DisableActionIfOwned(leftGrip, ownsLeftGripAction);
-        DisableActionIfOwned(rightGrip, ownsRightGripAction);
-        DisableActionIfOwned(leftTracked, ownsLeftTrackingAction);
-        DisableActionIfOwned(rightTracked, ownsRightTrackingAction);
-        ownsLeftGripAction = false;
-        ownsRightGripAction = false;
-        ownsLeftTrackingAction = false;
-        ownsRightTrackingAction = false;
+        foreach (var action in enabledSharedActions)
+        {
+            if (action != null && action.enabled)
+                action.Disable();
+        }
+        enabledSharedActions.Clear();
+        foreach (var action in ownedActions)
+            action.Dispose();
+        ownedActions.Clear();
+
         if (rigBuilder != null)
             rigBuilder.Clear();
         if (graph.IsValid())
             graph.Destroy();
-        if (leftMask != null)
-            Destroy(leftMask);
-        if (rightMask != null)
-            Destroy(rightMask);
+        DestroyFingerMasks(leftRig);
+        DestroyFingerMasks(rightRig);
         if (runtimeAvatar != null)
         {
             if (animator != null && animator.avatar == runtimeAvatar)
@@ -577,9 +774,13 @@ public sealed class ArmsVRController : MonoBehaviour
         }
     }
 
-    static void DisableActionIfOwned(InputAction action, bool enabledHere)
+    static void DestroyFingerMasks(HandRig hand)
     {
-        if (enabledHere && action != null && action.enabled)
-            action.Disable();
+        for (var group = 0; group < hand.fingerMasks.Length; group++)
+        {
+            if (hand.fingerMasks[group] != null)
+                Destroy(hand.fingerMasks[group]);
+            hand.fingerMasks[group] = null;
+        }
     }
 }
