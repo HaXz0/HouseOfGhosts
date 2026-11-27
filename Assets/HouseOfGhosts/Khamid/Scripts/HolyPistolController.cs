@@ -74,6 +74,24 @@ public class HolyPistolController : MonoBehaviour
     [Tooltip("Layers hit by Holy Pistol shots (Ghost + Walls/Obstacles).")]
     [SerializeField] private LayerMask hitLayers = ~0;
 
+    [Header("Fired Bullet Visual (Pooled 3D Mesh — No VFX)")]
+    [Tooltip("If true, launches a visible pooled 3D bullet mesh from MuzzlePoint to the impact point on every shot.")]
+    [SerializeField] private bool showFiredBulletVisual = true;
+
+    [Tooltip("3D bullet prefab launched visually on shot (e.g. Bullet (1).prefab).")]
+    [SerializeField] private GameObject firedBulletVisualPrefab;
+
+    [Tooltip("Local rotation aligning the bullet prefab's pointed nose with +Z (use (0,90,0) for Bullet (1).prefab).")]
+    [SerializeField] private Vector3 firedBulletRotationOffset = new Vector3(0f, 90f, 0f);
+
+    [Tooltip("Visual scale multiplier for the flying bullet (1.6x keeps a 9mm bullet clearly visible in VR flight).")]
+    [Range(0.5f, 4.0f)]
+    [SerializeField] private float firedBulletScale = 1.6f;
+
+    [Tooltip("Flight speed (meters/second) of the visible bullet mesh from muzzle to hit point.")]
+    [Range(8.0f, 80.0f)]
+    [SerializeField] private float firedBulletSpeed = 30.0f;
+
     [Header("VR Feel & Testing")]
     [Tooltip("Subtle visual kickback on ModelHolder when firing (never moves the player's VR camera).")]
     [SerializeField] private bool enableVisualRecoil = true;
@@ -140,6 +158,19 @@ public class HolyPistolController : MonoBehaviour
     private Vector3 m_LastShotEnd;
     private float m_LastShotDebugTimer = 0f;
 
+    private struct FlyingBulletSlot
+    {
+        public Transform Root;
+        public bool Active;
+        public Vector3 Direction;
+        public float RemainingDistance;
+    }
+
+    private const int k_FlyingBulletPoolSize = 3;
+    private Transform m_FlyingBulletPoolContainer;
+    private FlyingBulletSlot[] m_FlyingBulletPool;
+    private int m_NextFlyingBulletIndex = 0;
+
     public int CurrentAmmo => currentAmmo;
     public int MaxAmmo => maxAmmoCapacity;
     public bool IsAmmoFull => currentAmmo >= maxAmmoCapacity;
@@ -181,6 +212,7 @@ public class HolyPistolController : MonoBehaviour
 
     private void Start()
     {
+        InitializeFlyingBulletPool();
         onAmmoChanged?.Invoke(currentAmmo, maxAmmoCapacity);
         onCooldownNormalizedChanged?.Invoke(0f);
     }
@@ -205,6 +237,11 @@ public class HolyPistolController : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (m_FlyingBulletPoolContainer != null)
+        {
+            Destroy(m_FlyingBulletPoolContainer.gameObject);
+        }
+
         if (Instance == this)
         {
             Instance = null;
@@ -247,6 +284,8 @@ public class HolyPistolController : MonoBehaviour
         {
             m_LastShotDebugTimer = Mathf.Max(0f, m_LastShotDebugTimer - Time.deltaTime);
         }
+
+        UpdateFlyingBullets();
 
         if (enableKeyboardFTestFire && Keyboard.current != null && Keyboard.current.fKey.wasPressedThisFrame)
         {
@@ -377,6 +416,8 @@ public class HolyPistolController : MonoBehaviour
         m_LastShotStart = origin;
         m_LastShotEnd = hitPoint;
         m_LastShotDebugTimer = 1.5f;
+
+        LaunchFiredBulletVisual(origin, hitPoint);
 
         if (enableVisualRecoil && modelHolder != null)
         {
@@ -558,6 +599,107 @@ public class HolyPistolController : MonoBehaviour
         float eased = recoil01 * recoil01;
         modelHolder.localPosition = m_ModelHolderRestLocalPos + new Vector3(0f, 0f, -recoilKickBackMeters * eased);
         modelHolder.localRotation = m_ModelHolderRestLocalRot * Quaternion.Euler(-recoilKickUpDegrees * eased, 0f, 0f);
+    }
+
+    private void InitializeFlyingBulletPool()
+    {
+        if (!showFiredBulletVisual || firedBulletVisualPrefab == null || m_FlyingBulletPool != null)
+            return;
+
+        GameObject containerObj = new GameObject($"{gameObject.name}_FiredBullets_Pool");
+        m_FlyingBulletPoolContainer = containerObj.transform;
+        m_FlyingBulletPool = new FlyingBulletSlot[k_FlyingBulletPoolSize];
+
+        for (int i = 0; i < k_FlyingBulletPoolSize; i++)
+        {
+            GameObject slotRoot = new GameObject($"FiredBullet_{i}");
+            slotRoot.transform.SetParent(m_FlyingBulletPoolContainer, false);
+
+            GameObject meshObj = Instantiate(firedBulletVisualPrefab, slotRoot.transform, false);
+            meshObj.name = "BulletMesh";
+            meshObj.transform.localPosition = Vector3.zero;
+            meshObj.transform.localRotation = Quaternion.Euler(firedBulletRotationOffset);
+            meshObj.transform.localScale = Vector3.one * firedBulletScale;
+
+            Collider[] cols = meshObj.GetComponentsInChildren<Collider>(true);
+            for (int c = cols.Length - 1; c >= 0; c--)
+            {
+                if (cols[c] != null)
+                    Destroy(cols[c]);
+            }
+
+            slotRoot.SetActive(false);
+            m_FlyingBulletPool[i] = new FlyingBulletSlot
+            {
+                Root = slotRoot.transform,
+                Active = false,
+                Direction = Vector3.forward,
+                RemainingDistance = 0f
+            };
+        }
+    }
+
+    private void LaunchFiredBulletVisual(Vector3 startPos, Vector3 endPos)
+    {
+        if (!showFiredBulletVisual || firedBulletVisualPrefab == null)
+            return;
+
+        if (m_FlyingBulletPool == null)
+        {
+            InitializeFlyingBulletPool();
+            if (m_FlyingBulletPool == null)
+                return;
+        }
+
+        Vector3 delta = endPos - startPos;
+        float totalDistance = delta.magnitude;
+        if (totalDistance < 0.05f)
+            return;
+
+        Vector3 dir = delta / totalDistance;
+        int idx = m_NextFlyingBulletIndex;
+        m_NextFlyingBulletIndex = (m_NextFlyingBulletIndex + 1) % m_FlyingBulletPool.Length;
+
+        FlyingBulletSlot slot = m_FlyingBulletPool[idx];
+        if (slot.Root == null)
+            return;
+
+        slot.Root.position = startPos;
+        slot.Root.rotation = Quaternion.LookRotation(dir, Vector3.up);
+        slot.Root.gameObject.SetActive(true);
+        slot.Active = true;
+        slot.Direction = dir;
+        slot.RemainingDistance = totalDistance;
+        m_FlyingBulletPool[idx] = slot;
+    }
+
+    private void UpdateFlyingBullets()
+    {
+        if (m_FlyingBulletPool == null)
+            return;
+
+        float step = Mathf.Max(1.0f, firedBulletSpeed) * Time.deltaTime;
+        for (int i = 0; i < m_FlyingBulletPool.Length; i++)
+        {
+            FlyingBulletSlot slot = m_FlyingBulletPool[i];
+            if (!slot.Active || slot.Root == null)
+                continue;
+
+            if (slot.RemainingDistance <= step)
+            {
+                slot.Root.position += slot.Direction * slot.RemainingDistance;
+                slot.Root.gameObject.SetActive(false);
+                slot.Active = false;
+                slot.RemainingDistance = 0f;
+            }
+            else
+            {
+                slot.Root.position += slot.Direction * step;
+                slot.RemainingDistance -= step;
+            }
+
+            m_FlyingBulletPool[i] = slot;
+        }
     }
 
     private void SendHapticToInteractor(IXRInteractor interactor, float amplitude, float duration)

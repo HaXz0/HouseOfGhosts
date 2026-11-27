@@ -28,11 +28,17 @@ public class HolyBulletPickup : MonoBehaviour
     [SerializeField] private bool allowDirectPistolTouch = true;
 
     [Header("Bullet Visual (Easy 1-Slot Prefab Swap)")]
-    [Tooltip("Drag PistolBulletAmmo.prefab now (or Ferron's bullet prefab later) here.")]
+    [Tooltip("Drag Bullet (1).prefab (or any other bullet model prefab) here.")]
     [SerializeField] private GameObject visualModelPrefab;
 
     [Tooltip("Parent transform where visualModelPrefab is placed. Auto-created as 'VisualHolder' if empty.")]
     [SerializeField] private Transform visualHolder;
+
+    [Tooltip("Rotation offset applied to the spawned bullet mesh (use (0,90,0) for Bullet (1).prefab).")]
+    [SerializeField] private Vector3 visualRotationOffset = new Vector3(0f, 90f, 0f);
+
+    [Tooltip("Scale applied to the spawned bullet mesh (2.2 makes a 2.6cm 9mm cartridge readable on dark floors).")]
+    [SerializeField] private Vector3 visualScale = new Vector3(2.2f, 2.2f, 2.2f);
 
     [Tooltip("Removes colliders on the visual mesh so the comfortable 9cm VR grab SphereCollider handles pickup cleanly.")]
     [SerializeField] private bool stripVisualColliders = true;
@@ -251,6 +257,8 @@ public class HolyBulletPickup : MonoBehaviour
         GameObject spawned = Instantiate(visualModelPrefab, visualHolder, false);
         spawned.name = visualModelPrefab.name + "_Visual";
         spawned.transform.localPosition = Vector3.zero;
+        spawned.transform.localRotation = Quaternion.Euler(visualRotationOffset);
+        spawned.transform.localScale = visualScale;
 
         if (stripVisualColliders)
         {

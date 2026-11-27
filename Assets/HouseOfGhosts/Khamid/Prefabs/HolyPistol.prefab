@@ -1012,6 +1012,11 @@ MonoBehaviour:
   hitLayers:
     serializedVersion: 2
     m_Bits: 4294967295
+  showFiredBulletVisual: 1
+  firedBulletVisualPrefab: {fileID: 4763256833050685055, guid: 4923db7658859cf4f8a5817e2be42c8f, type: 3}
+  firedBulletRotationOffset: {x: 0, y: 90, z: 0}
+  firedBulletScale: 1.6
+  firedBulletSpeed: 30
   enableVisualRecoil: 1
   recoilKickBackMeters: 0.028
   recoilKickUpDegrees: 9
