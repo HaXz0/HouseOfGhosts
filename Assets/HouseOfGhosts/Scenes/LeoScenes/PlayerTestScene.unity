@@ -14543,10 +14543,7 @@ TextMesh:
   m_GameObject: {fileID: 1742763547}
   m_Text: 'HAND STOP WALL
 
-    Push your hand into the wall: it stops
-
-    Reach
-    through the window for the ball'
+    Grab the ball through the window'
   m_OffsetZ: 0
   m_CharacterSize: 0.004
   m_LineSpacing: 1
