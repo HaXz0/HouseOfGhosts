@@ -582,10 +582,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 0
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -628,6 +632,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -784,7 +791,7 @@ MonoBehaviour:
   enableOpenFloorFeintCut: 1
   openFloorFeintChance: 0.65
   enableBeamStruggle: 1
-  maxBeamSlowdownFactor: 0.45
+  maxBeamSlowdownFactor: 0.62
   struggleTrembleAmplitude: 0.02
   struggleTrembleFrequency: 26
   watchPlayerChance: 0.5
@@ -802,7 +809,7 @@ MonoBehaviour:
   erraticNoiseBlend: 0.12
   arrivalTaperDistance: 1.6
   enablePanicDodge: 1
-  illuminatedSpeedMultiplier: 1.15
+  illuminatedSpeedMultiplier: 1
   illuminatedWeaveMultiplier: 1.2
   jukeIntervalUnderBeam: 2.2
   enableWallPhasingEffect: 1
@@ -1020,10 +1027,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -1066,6 +1077,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -1310,10 +1324,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -1356,6 +1374,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -1607,10 +1628,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -1653,6 +1678,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -2024,10 +2052,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -2070,6 +2102,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -2202,10 +2237,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -2248,6 +2287,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -2604,10 +2646,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -2650,6 +2696,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -2782,10 +2831,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -2828,6 +2881,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -3320,6 +3376,83 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 622969976}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &642812802
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 642812804}
+  - component: {fileID: 642812803}
+  m_Layer: 0
+  m_Name: HolyBulletSpawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &642812803
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 642812802}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8cfb39633823deb4194180570c385c41, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HolyBulletSpawner
+  bulletPickupPrefab: {fileID: 7131867036026469117, guid: b8e5902ab3a72de41b8b7a4b436bfbdd, type: 3}
+  maxActiveWorldBullets: 3
+  respawnDelaySeconds: 0.35
+  minDistanceFromActiveBullets: 3.5
+  minDistanceFromRecentSpawns: 1.25
+  hardNonIdenticalMinDistance: 0.12
+  minDistanceFromPlayer: 3
+  wallClearanceRadius: 0.22
+  surfaceHoverHeight: 0.06
+  environmentLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  spawnZones:
+  - {fileID: 1933045156}
+  - {fileID: 1838493148}
+  - {fileID: 1354680660}
+  - {fileID: 1922060313}
+  - {fileID: 871741740}
+  - {fileID: 932266216}
+  playerHead: {fileID: 0}
+  autoUnlockLockedZonesOnAtticUnlock: 1
+  activeWorldBulletCount: 0
+  totalBulletsCollected: 0
+  onWorldBulletSpawned:
+    m_PersistentCalls:
+      m_Calls: []
+  showDebugLogs: 1
+--- !u!4 &642812804
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 642812802}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1933045157}
+  - {fileID: 1838493149}
+  - {fileID: 1354680661}
+  - {fileID: 1922060314}
+  - {fileID: 871741741}
+  - {fileID: 932266217}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &648953532
 GameObject:
   m_ObjectHideFlags: 0
@@ -3369,10 +3502,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -3415,6 +3552,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -3852,10 +3992,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -3898,6 +4042,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -4030,10 +4177,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -4076,6 +4227,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -4317,6 +4471,71 @@ Transform:
   m_Children: []
   m_Father: {fileID: 695590293}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1001 &848894083
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 674192606690254349, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 4.4
+      objectReference: {fileID: 0}
+    - target: {fileID: 674192606690254349, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.11
+      objectReference: {fileID: 0}
+    - target: {fileID: 674192606690254349, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 3.459
+      objectReference: {fileID: 0}
+    - target: {fileID: 674192606690254349, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 674192606690254349, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 674192606690254349, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 674192606690254349, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 674192606690254349, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 674192606690254349, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: -90
+      objectReference: {fileID: 0}
+    - target: {fileID: 674192606690254349, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2167661179495693476, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: visualModelPrefab
+      value: 
+      objectReference: {fileID: 9167544042333950040, guid: 77561241fbe67db42b575fb8e39a0414, type: 3}
+    - target: {fileID: 2167661179495693476, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: autoFitRootColliderToModel
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7711543507073504667, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
+      propertyPath: m_Name
+      value: HolyPistol
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: d374b4cb9c6665f4494b5d9f847510f7, type: 3}
 --- !u!1 &856475437
 GameObject:
   m_ObjectHideFlags: 0
@@ -4429,6 +4648,108 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 856475437}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &871741739
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 871741741}
+  - component: {fileID: 871741740}
+  m_Layer: 0
+  m_Name: BulletZone_SouthWest
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &871741740
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 871741739}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9caa47db8ec59f7488d5154ee8ca1209, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HolyBulletSpawnZone
+  areaName: BulletZone_SouthWest
+  startsUnlocked: 1
+  zoneShape: 0
+  spawnRadius: 3.2
+  boxHalfExtentsXZ: {x: 2.2, y: 2.2}
+  raycastStartHeight: 1.2
+  raycastMaxDistance: 3.2
+--- !u!4 &871741741
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 871741739}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -10.62, y: 0, z: -8.8}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 642812804}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &932266215
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 932266217}
+  - component: {fileID: 932266216}
+  m_Layer: 0
+  m_Name: BulletZone_SouthEast
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &932266216
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 932266215}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9caa47db8ec59f7488d5154ee8ca1209, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HolyBulletSpawnZone
+  areaName: BulletZone_SouthEast
+  startsUnlocked: 1
+  zoneShape: 0
+  spawnRadius: 3.2
+  boxHalfExtentsXZ: {x: 2.2, y: 2.2}
+  raycastStartHeight: 1.2
+  raycastMaxDistance: 3.2
+--- !u!4 &932266217
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 932266215}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 15.52, y: 0, z: -9.83}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 642812804}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1021915043
 GameObject:
   m_ObjectHideFlags: 0
@@ -4702,10 +5023,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -4748,6 +5073,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -4880,10 +5208,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -4926,6 +5258,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -5071,10 +5406,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -5117,6 +5456,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -5573,10 +5915,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -5619,6 +5965,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -6277,6 +6626,57 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1324270940}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &1354680659
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1354680661}
+  - component: {fileID: 1354680660}
+  m_Layer: 0
+  m_Name: BulletZone_CenterWest
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1354680660
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1354680659}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9caa47db8ec59f7488d5154ee8ca1209, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HolyBulletSpawnZone
+  areaName: BulletZone_CenterWest
+  startsUnlocked: 1
+  zoneShape: 0
+  spawnRadius: 3.2
+  boxHalfExtentsXZ: {x: 2.2, y: 2.2}
+  raycastStartHeight: 1.2
+  raycastMaxDistance: 3.2
+--- !u!4 &1354680661
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1354680659}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -15.81, y: 0, z: 2.8}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 642812804}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1416328724
 GameObject:
   m_ObjectHideFlags: 0
@@ -6886,10 +7286,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -6932,6 +7336,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -7413,10 +7820,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -7459,6 +7870,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -7654,6 +8068,57 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1793083440}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &1838493147
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1838493149}
+  - component: {fileID: 1838493148}
+  m_Layer: 0
+  m_Name: BulletZone_NorthEast
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1838493148
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1838493147}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9caa47db8ec59f7488d5154ee8ca1209, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HolyBulletSpawnZone
+  areaName: BulletZone_NorthEast
+  startsUnlocked: 1
+  zoneShape: 0
+  spawnRadius: 3.2
+  boxHalfExtentsXZ: {x: 2.2, y: 2.2}
+  raycastStartHeight: 1.2
+  raycastMaxDistance: 3.2
+--- !u!4 &1838493149
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1838493147}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 16.92, y: 0, z: 13.56}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 642812804}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1880602804
 GameObject:
   m_ObjectHideFlags: 0
@@ -7877,6 +8342,108 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 214038198}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1922060312
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1922060314}
+  - component: {fileID: 1922060313}
+  m_Layer: 0
+  m_Name: BulletZone_CenterEast
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1922060313
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1922060312}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9caa47db8ec59f7488d5154ee8ca1209, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HolyBulletSpawnZone
+  areaName: BulletZone_CenterEast
+  startsUnlocked: 1
+  zoneShape: 0
+  spawnRadius: 3.2
+  boxHalfExtentsXZ: {x: 2.2, y: 2.2}
+  raycastStartHeight: 1.2
+  raycastMaxDistance: 3.2
+--- !u!4 &1922060314
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1922060312}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 15.07, y: 0, z: 2}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 642812804}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1933045155
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1933045157}
+  - component: {fileID: 1933045156}
+  m_Layer: 0
+  m_Name: BulletZone_NorthWest
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1933045156
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1933045155}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9caa47db8ec59f7488d5154ee8ca1209, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HolyBulletSpawnZone
+  areaName: BulletZone_NorthWest
+  startsUnlocked: 1
+  zoneShape: 0
+  spawnRadius: 3.2
+  boxHalfExtentsXZ: {x: 2.2, y: 2.2}
+  raycastStartHeight: 1.2
+  raycastMaxDistance: 3.2
+--- !u!4 &1933045157
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1933045155}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -13.15, y: 0, z: 14.42}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 642812804}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1956290718
 GameObject:
@@ -8599,10 +9166,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GhostTarget
   isTestDummy: 1
   dummyRespawnDelay: 3
-  requiredCaptureDuration: 3
+  requiredCaptureDuration: 15
   beamLossGracePeriod: 0.2
   instantResetOnLoseBeam: 0
   decaySpeed: 0.9
+  beamSlowRampSpeed: 1.65
+  beamSlowLingerSeconds: 0.45
+  beamSlowDecaySpeed: 1.35
+  requireExposedForPistolKill: 1
   showVisualColorFeedback: 1
   spectralMaterial: {fileID: 2100000, guid: b953151385e9f956add1b9228e9e6da9, type: 2}
   spectralShader: {fileID: 4800000, guid: a942040274d8e845fcc0a8117d8d5cf8, type: 3}
@@ -8645,6 +9216,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onGhostCaptured:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapturedByHolyPistol:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -9168,3 +9742,5 @@ SceneRoots:
   - {fileID: 1243551062}
   - {fileID: 186358335}
   - {fileID: 695590293}
+  - {fileID: 642812804}
+  - {fileID: 848894083}

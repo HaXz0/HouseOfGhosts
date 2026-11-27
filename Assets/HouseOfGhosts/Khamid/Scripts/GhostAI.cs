@@ -176,19 +176,19 @@ public class GhostAI : MonoBehaviour
     [Range(0f, 1f)]
     [SerializeField] private float openFloorFeintChance = 0.65f;
 
-    [Header("Stage 2: Flashlight Beam-Lock Struggle")]
-    [Tooltip("If true, holding the Normal beam on the ghost makes her visibly tremble and drags down her flee speed as capture nears 3s.")]
+    [Header("Stage 2: Flashlight Beam-Lock Slowdown & Struggle")]
+    [Tooltip("If true, shining the Normal beam on the ghost quickly slows her flee speed, tightens her weave, and makes her tremble so you can line up your Holy Pistol shot.")]
     [SerializeField] private bool enableBeamStruggle = true;
 
-    [Tooltip("Maximum flee speed reduction (0.45 = 45% slower) as the 3-second capture progress nears 100%.")]
-    [Range(0f, 0.8f)]
-    [SerializeField] private float maxBeamSlowdownFactor = 0.45f;
+    [Tooltip("Maximum flee speed reduction (0.62 = 62% slower) while held under the Normal flashlight beam.")]
+    [Range(0f, 0.85f)]
+    [SerializeField] private float maxBeamSlowdownFactor = 0.62f;
 
-    [Tooltip("Subtle struggle shiver intensity (meters) as capture nears 3s (0.02 = gentle supernatural tremble).")]
+    [Tooltip("Subtle struggle shiver intensity (meters) while held under the Normal beam (intensifies further toward the 15s backup flashlight kill).")]
     [Range(0f, 0.08f)]
     [SerializeField] private float struggleTrembleAmplitude = 0.02f;
 
-    [Tooltip("Vibration speed (Hz) while struggling near the end of the 3s capture.")]
+    [Tooltip("Vibration speed (Hz) while struggling under the flashlight beam.")]
     [SerializeField] private float struggleTrembleFrequency = 26.0f;
 
     [Header("Fake Escape Settings")]
@@ -243,8 +243,8 @@ public class GhostAI : MonoBehaviour
     [Tooltip("If true, the ghost subtly surges and curves away when hit by the flashlight beam while fleeing.")]
     [SerializeField] private bool enablePanicDodge = true;
 
-    [Tooltip("Initial startle speed multiplier when first hit by the beam (overcome by Stage 2 Beam-Lock drag as capture fills!).")]
-    [SerializeField] private float illuminatedSpeedMultiplier = 1.15f;
+    [Tooltip("Speed multiplier when hit by the beam (1.0 = no speedup, letting Stage 2 Flashlight Slow drag her speed cleanly down).")]
+    [SerializeField] private float illuminatedSpeedMultiplier = 1.0f;
 
     [Tooltip("Subtle weave width multiplier while the flashlight beam is hitting her (1.2 = 20% wider smooth arc).")]
     [SerializeField] private float illuminatedWeaveMultiplier = 1.20f;
@@ -2758,11 +2758,12 @@ public class GhostAI : MonoBehaviour
         Vector3 targetPos = m_TargetSpot.Position;
         bool effectivelyIlluminated = m_GhostTarget != null && m_GhostTarget.IsIlluminated && !isCloakedWhileFleeing;
         float captureProgress = (m_GhostTarget != null && !isCloakedWhileFleeing) ? m_GhostTarget.CurrentProgressNormalized : 0f;
+        float beamSlowIntensity = (m_GhostTarget != null && !isCloakedWhileFleeing) ? m_GhostTarget.CurrentBeamSlowNormalized : 0f;
 
         // Stage 1D: Evaluate Behind-Wall 90-Degree Corner Cuts & Open-Floor Diagonal Feints!
-        UpdateTacticalCornerCuts(effectivelyIlluminated, captureProgress, ref targetPos);
+        UpdateTacticalCornerCuts(effectivelyIlluminated, Mathf.Max(captureProgress, beamSlowIntensity * 0.5f), ref targetPos);
 
-        // 1. Reactive Flashlight Panic + Stage 2 Beam-Lock Slowdown! (Normal Flashlight does nothing while cloaked-fleeing > 1.5m!)
+        // 1. Reactive Flashlight Juke + Stage 2 Fast Flashlight Slowdown! (Normal Flashlight does nothing while cloaked-fleeing > 1.5m!)
         float activeSpeed = fleeSpeed;
         float activeWeaveAmp = weaveAmplitude;
 
@@ -2796,12 +2797,13 @@ public class GhostAI : MonoBehaviour
             activeSpeed *= Mathf.Lerp(1.0f, m_ActiveCutSpeedMultiplier, burstBlend);
         }
 
-        // Stage 2: As capture progress rises (0% -> 100%), the beam drags down her speed ("Beam-Lock")!
-        if (enableBeamStruggle && captureProgress > 0.01f)
+        // Stage 2: Fast Flashlight Slowdown (decoupled from the 15s emergency kill timer so slowing works immediately!)
+        float effectiveSlow = Mathf.Max(beamSlowIntensity, captureProgress);
+        if (enableBeamStruggle && effectiveSlow > 0.01f)
         {
-            float beamDragMultiplier = Mathf.Lerp(1.0f, 1.0f - maxBeamSlowdownFactor, captureProgress);
+            float beamDragMultiplier = Mathf.Lerp(1.0f, 1.0f - maxBeamSlowdownFactor, effectiveSlow);
             activeSpeed *= beamDragMultiplier;
-            activeWeaveAmp *= Mathf.Lerp(1.0f, 0.35f, captureProgress);
+            activeWeaveAmp *= Mathf.Lerp(1.0f, 0.30f, effectiveSlow);
         }
 
         activeSpeed *= GetActiveWallSpeedMultiplier();
@@ -3343,12 +3345,12 @@ public class GhostAI : MonoBehaviour
         if (!enableBeamStruggle || isCloakedWhileFleeing || m_GhostTarget == null || !m_GhostTarget.IsIlluminated)
             return Vector3.zero;
 
-        float progress = m_GhostTarget.CurrentProgressNormalized;
-        if (progress <= 0.15f)
+        // Combine fast beam-slow intensity (immediate tactile slow feedback) with 15s kill burn escalation
+        float intensity = Mathf.Max(m_GhostTarget.CurrentProgressNormalized, m_GhostTarget.CurrentBeamSlowNormalized * 0.55f);
+        if (intensity <= 0.12f)
             return Vector3.zero;
 
-        // Quadratic ramp so she glides cleanly at first and shivers intensely right before the 3s capture!
-        float ramp = (progress - 0.15f) / 0.85f;
+        float ramp = (intensity - 0.12f) / 0.88f;
         float strength = struggleTrembleAmplitude * (ramp * ramp);
         float t = Time.time * struggleTrembleFrequency;
         return new Vector3(

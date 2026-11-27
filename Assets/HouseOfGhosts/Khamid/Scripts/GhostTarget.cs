@@ -18,9 +18,9 @@ public class GhostTarget : MonoBehaviour
     [Tooltip("Seconds before a captured test dummy pops back up for re-testing.")]
     [SerializeField] private float dummyRespawnDelay = 3.0f;
 
-    [Header("Capture Settings")]
-    [Tooltip("Total continuous seconds the ghost must be illuminated to be captured.")]
-    [SerializeField] private float requiredCaptureDuration = 3.0f;
+    [Header("Capture & Flashlight Slowdown Settings")]
+    [Tooltip("Total continuous seconds the Normal flashlight must burn the ghost for a desperation flashlight kill (default 15s; Holy Pistol kills in 1 shot!).")]
+    [SerializeField] private float requiredCaptureDuration = 15.0f;
 
     [Tooltip("Short grace buffer (seconds) so tiny VR hand twitches don't immediately wipe out progress.")]
     [SerializeField] private float beamLossGracePeriod = 0.2f;
@@ -30,6 +30,21 @@ public class GhostTarget : MonoBehaviour
 
     [Tooltip("How fast capture progress drains per second when you look away (0.9 = gradual fair cooldown).")]
     [SerializeField] private float decaySpeed = 0.9f;
+
+    [Tooltip("How quickly the Normal flashlight slow ramps up (1.65 = full slow in ~0.6 seconds so you can line up your Holy Pistol shot).")]
+    [Range(0.25f, 6.0f)]
+    [SerializeField] private float beamSlowRampSpeed = 1.65f;
+
+    [Tooltip("Brief linger (seconds) the ghost stays slowed after the flashlight beam moves off her (helps quick hand swaps / aiming).")]
+    [Range(0.0f, 2.0f)]
+    [SerializeField] private float beamSlowLingerSeconds = 0.45f;
+
+    [Tooltip("How fast the slow fades back to 0 once the beam linger finishes.")]
+    [Range(0.25f, 6.0f)]
+    [SerializeField] private float beamSlowDecaySpeed = 1.35f;
+
+    [Tooltip("If true (recommended), a cloaked/invisible ghost must be exposed with the Flashlight/UV before a Holy Pistol shot can kill her.")]
+    [SerializeField] private bool requireExposedForPistolKill = true;
 
     [Header("Stage 1: Spectral Shader & Color Feedback")]
     [Tooltip("Tints the ghost/dummy color while illuminated or phasing through walls.")]
@@ -176,8 +191,11 @@ public class GhostTarget : MonoBehaviour
     [Tooltip("Invoked every frame the ghost is illuminated, passing progress from 0.0 to 1.0.")]
     public UnityEvent<float> onCaptureProgress;
 
-    [Tooltip("Invoked once when capture completes successfully.")]
+    [Tooltip("Invoked once when capture completes successfully (via Holy Pistol OR 15s Flashlight).")]
     public UnityEvent onGhostCaptured;
+
+    [Tooltip("Invoked specifically when banished by a Holy Pistol shot (ready for future Holy Cross VFX / sound hooks).")]
+    public UnityEvent onCapturedByHolyPistol;
 
     [Header("Debug")]
     [SerializeField] private bool showDebugLogs = true;
@@ -193,6 +211,8 @@ public class GhostTarget : MonoBehaviour
 
     private float m_CurrentCaptureTime = 0f;
     private float m_CurrentGraceTimer = 0f;
+    private float m_CurrentBeamSlow = 0f;
+    private float m_BeamSlowLingerTimer = 0f;
     private float m_DummyRespawnTimer = 0f;
     private float m_WallPhaseBlend = 0f;
 
@@ -290,7 +310,8 @@ public class GhostTarget : MonoBehaviour
     private static readonly int s_CaptureStrainId = Shader.PropertyToID("_CaptureStrain");
     private static readonly int s_StrainCrackColorId = Shader.PropertyToID("_StrainCrackColor");
 
-    public float CurrentProgressNormalized => Mathf.Clamp01(m_CurrentCaptureTime / requiredCaptureDuration);
+    public float CurrentProgressNormalized => Mathf.Clamp01(m_CurrentCaptureTime / Mathf.Max(0.1f, requiredCaptureDuration));
+    public float CurrentBeamSlowNormalized => Mathf.Clamp01(m_CurrentBeamSlow);
     public bool IsIlluminated => m_IsIlluminatedThisFrame;
     public bool IsCloakCaptureImmune => m_IsCloakCaptureImmune;
     public bool IsRecentlyIlluminated => (!m_IsCloakCaptureImmune && m_IsIlluminatedThisFrame) || m_CurrentGraceTimer > 0f;
@@ -494,14 +515,17 @@ public class GhostTarget : MonoBehaviour
             }
 
             m_CurrentGraceTimer = beamLossGracePeriod;
+            m_BeamSlowLingerTimer = beamSlowLingerSeconds;
+            m_CurrentBeamSlow = Mathf.MoveTowards(m_CurrentBeamSlow, 1.0f, beamSlowRampSpeed * Time.deltaTime);
+
             if (!isPreviewingPeel)
             {
                 m_CurrentCaptureTime += Time.deltaTime;
             }
 
-            if (showDebugLogs && !isPreviewingPeel && Time.frameCount % 20 == 0)
+            if (showDebugLogs && !isPreviewingPeel && Time.frameCount % 30 == 0)
             {
-                Debug.Log($"[{gameObject.name}] Capture Progress: {m_CurrentCaptureTime:F1}s / {requiredCaptureDuration:F1}s ({CurrentProgressNormalized * 100f:F0}%)");
+                Debug.Log($"[{gameObject.name}] Slow: {m_CurrentBeamSlow * 100f:F0}% | Flashlight Burn: {m_CurrentCaptureTime:F1}s / {requiredCaptureDuration:F1}s ({CurrentProgressNormalized * 100f:F0}%)");
             }
 
             UpdateVisualFeedback(true);
@@ -510,11 +534,25 @@ public class GhostTarget : MonoBehaviour
 
             if (!isPreviewingPeel && m_CurrentCaptureTime >= requiredCaptureDuration)
             {
-                CaptureGhost();
+                CaptureGhost(isHolyPistolKill: false);
             }
         }
         else
         {
+            if (m_IsCloakCaptureImmune)
+            {
+                m_BeamSlowLingerTimer = 0f;
+                m_CurrentBeamSlow = Mathf.MoveTowards(m_CurrentBeamSlow, 0f, beamSlowDecaySpeed * 2.5f * Time.deltaTime);
+            }
+            else if (m_BeamSlowLingerTimer > 0f)
+            {
+                m_BeamSlowLingerTimer -= Time.deltaTime;
+            }
+            else if (m_CurrentBeamSlow > 0f)
+            {
+                m_CurrentBeamSlow = Mathf.MoveTowards(m_CurrentBeamSlow, 0f, beamSlowDecaySpeed * Time.deltaTime);
+            }
+
             if (m_CurrentCaptureTime > 0f)
             {
                 if (m_CurrentGraceTimer > 0f)
@@ -684,7 +722,56 @@ public class GhostTarget : MonoBehaviour
         if (immune)
         {
             m_CurrentGraceTimer = 0f;
+            m_BeamSlowLingerTimer = 0f;
+            m_CurrentBeamSlow = 0f;
         }
+    }
+
+    /// <summary>
+    /// Returns true if a Holy Pistol shot can currently banish this ghost/dummy.
+    /// Hidden or stealth-cloaked ghosts must be exposed with the Flashlight/UV first when requireExposedForPistolKill is enabled.
+    /// </summary>
+    public bool CanBeKilledByHolyPistol()
+    {
+        if (m_IsCaptured || !gameObject.activeInHierarchy)
+            return false;
+
+        if (!isTestDummy && requireExposedForPistolKill)
+        {
+            if (m_IsCloakCaptureImmune || m_SpectralVisibility <= 0.15f)
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Called by HolyPistolController when a Holy Pistol shot hits this ghost or test dummy.
+    /// Banishes the ghost in 1 shot if exposed/vulnerable and returns true; returns false if blocked by invisibility/cloak.
+    /// </summary>
+    public bool CaptureByHolyPistol(Vector3 hitPoint, Vector3 shotDirection)
+    {
+        if (!CanBeKilledByHolyPistol())
+        {
+            if (showDebugLogs && !m_IsCaptured)
+            {
+                Debug.Log($"[{gameObject.name}] Holy Pistol shot passed through cloaked ghost! Expose her with the Flashlight/UV first.");
+            }
+            return false;
+        }
+
+        if (shotDirection.sqrMagnitude > 0.001f)
+        {
+            Vector3 flatShot = new Vector3(shotDirection.x, 0f, shotDirection.z);
+            if (flatShot.sqrMagnitude > 0.001f)
+            {
+                m_CurrentPeelingWindDir = flatShot.normalized;
+                m_HasActivePeelingWind = true;
+            }
+        }
+
+        CaptureGhost(isHolyPistolKill: true);
+        return true;
     }
 
     /// <summary>
@@ -747,10 +834,12 @@ public class GhostTarget : MonoBehaviour
         }
     }
 
-    private void CaptureGhost()
+    private void CaptureGhost(bool isHolyPistolKill = false)
     {
         m_IsCaptured = true;
         m_CurrentCaptureTime = requiredCaptureDuration;
+        m_CurrentBeamSlow = 0f;
+        m_BeamSlowLingerTimer = 0f;
         m_WallPhaseBlend = 0f;
         m_DebugPreviewPeelTimer = 0f;
 
@@ -764,9 +853,14 @@ public class GhostTarget : MonoBehaviour
 
         onCaptureProgress?.Invoke(1f);
         int activeRound = ResolveActiveVfxRound();
-        Debug.Log($"[{gameObject.name}] *** CAPTURED! *** (Round {activeRound} Soul-Dust VFX triggered)");
+        string sourceLabel = isHolyPistolKill ? "HOLY PISTOL" : $"{requiredCaptureDuration:F0}s FLASHLIGHT BURN";
+        Debug.Log($"[{gameObject.name}] *** BANISHED BY {sourceLabel}! *** (Round {activeRound})");
         PlayCaptureVFXForRound(activeRound);
         m_HasActivePeelingWind = false;
+        if (isHolyPistolKill)
+        {
+            onCapturedByHolyPistol?.Invoke();
+        }
         onGhostCaptured?.Invoke();
 
         m_ActiveCaptureVanishDuration = GetVanishDurationForRound(activeRound);
@@ -1513,6 +1607,8 @@ public class GhostTarget : MonoBehaviour
         m_CaptureVanishTimer = 0f;
         m_CurrentCaptureTime = 0f;
         m_CurrentGraceTimer = 0f;
+        m_CurrentBeamSlow = 0f;
+        m_BeamSlowLingerTimer = 0f;
         m_WallPhaseBlend = 0f;
         m_IsCloakCaptureImmune = false;
         m_IsIlluminatedThisFrame = false;

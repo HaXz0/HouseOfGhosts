@@ -203,10 +203,15 @@ public class FlashlightRecoveryHighlight : MonoBehaviour
             return;
         }
 
-        m_OutlineMaterialInstance = new Material(xrayOutlineShader)
+        if (m_OutlineMaterialInstance == null)
         {
-            name = "Flashlight_XRayOutline_RuntimeMat"
-        };
+            m_OutlineMaterialInstance = new Material(xrayOutlineShader)
+            {
+                name = $"{gameObject.name}_XRayOutline_RuntimeMat"
+            };
+        }
+
+        m_OverlayRenderers.Clear();
 
         MeshFilter[] meshFilters = GetComponentsInChildren<MeshFilter>(true);
         for (int i = 0; i < meshFilters.Length; i++)
@@ -219,8 +224,10 @@ public class FlashlightRecoveryHighlight : MonoBehaviour
             if (mf.gameObject.name.EndsWith("_XRayOverlay"))
                 continue;
 
-            // Skip runtime volumetric beam cones or any helper mesh under the Spotlight!
-            if (mf.gameObject.name.Contains("VolumetricBeam") || mf.GetComponentInParent<Light>() != null)
+            // Skip runtime volumetric beam cones, spotlight helpers, or explicit _NoHighlight helpers!
+            if (mf.gameObject.name.Contains("VolumetricBeam") ||
+                mf.gameObject.name.Contains("_NoHighlight") ||
+                mf.GetComponentInParent<Light>() != null)
                 continue;
 
             MeshRenderer sourceRenderer = mf.GetComponent<MeshRenderer>();
@@ -242,7 +249,7 @@ public class FlashlightRecoveryHighlight : MonoBehaviour
             overlayMr.lightProbeUsage = LightProbeUsage.Off;
             overlayMr.reflectionProbeUsage = ReflectionProbeUsage.Off;
 
-            // Assign the X-Ray material to all submeshes (e.g. Flashlight body + lens)
+            // Assign the X-Ray material to all submeshes (e.g. Flashlight body + lens, or Holy Pistol meshes)
             int subMeshCount = Mathf.Max(1, mf.sharedMesh.subMeshCount);
             Material[] mats = new Material[subMeshCount];
             for (int m = 0; m < subMeshCount; m++)
@@ -254,6 +261,40 @@ public class FlashlightRecoveryHighlight : MonoBehaviour
 
             m_OverlayRenderers.Add(overlayMr);
         }
+    }
+
+    /// <summary>
+    /// Rebuilds the X-Ray highlight overlay meshes (useful after swapping a visual weapon model prefab at runtime).
+    /// </summary>
+    public void RebuildXRayOverlays()
+    {
+        for (int i = m_OverlayRenderers.Count - 1; i >= 0; i--)
+        {
+            if (m_OverlayRenderers[i] != null)
+            {
+                Destroy(m_OverlayRenderers[i].gameObject);
+            }
+        }
+        m_OverlayRenderers.Clear();
+
+        // Also sweep any orphaned _XRayOverlay children
+        Transform[] children = GetComponentsInChildren<Transform>(true);
+        for (int i = children.Length - 1; i >= 0; i--)
+        {
+            if (children[i] != null && children[i].gameObject.name.EndsWith("_XRayOverlay"))
+            {
+                Destroy(children[i].gameObject);
+            }
+        }
+
+        m_SelfColliders = GetComponentsInChildren<Collider>(true);
+        BuildXRayOverlayRenderers();
+        SetOverlayRenderersActive(m_CurrentHighlightBlend > 0.001f);
+    }
+
+    public void SetOutlineColor(Color newColor)
+    {
+        outlineColor = newColor;
     }
 
     private void UpdateOverlayVisuals(float blend)
