@@ -69,13 +69,21 @@ public sealed class ArmsVRController : MonoBehaviour
         public void ProcessRootMotion(AnimationStream stream) { }
     }
 
-    // Finger groups in layer order: index (trigger), thumb/middle/ring/pinky (grip).
-    const int k_FingerGroupCount = 2;
+    // One group per finger, in layer order. The index follows the trigger; the others follow the grip.
+    // Each finger has its own layer so it can stop on its own when it touches something.
+    const int k_FingerGroupCount = 5;
+    const int k_IndexGroup = 0;
+    const int k_ThumbGroup = 1;
     static readonly string[][] k_FingerGroupBones =
     {
         new[] { "Index" },
-        new[] { "Thumb", "Middle", "Ring", "Pinky" },
+        new[] { "Thumb" },
+        new[] { "Middle" },
+        new[] { "Ring" },
+        new[] { "Pinky" },
     };
+    // The fingertip has no bone; it sits this fraction of the last bone segment beyond the last joint.
+    const float k_FingertipLengthRatio = 0.8f;
 
     // Per-hand input and finger animation state. Each finger group scrubs its own masked copy of the squeeze clip.
     sealed class HandRig
@@ -88,6 +96,8 @@ public sealed class ArmsVRController : MonoBehaviour
         public readonly AnimationClipPlayable[] fingerPlayables = new AnimationClipPlayable[k_FingerGroupCount];
         public readonly AvatarMask[] fingerMasks = new AvatarMask[k_FingerGroupCount];
         public readonly float[] fingerCurl = new float[k_FingerGroupCount];
+        public readonly Transform[][] fingerBones = new Transform[k_FingerGroupCount][];
+        public readonly Vector3[] fingerTipLocal = new Vector3[k_FingerGroupCount];
         public Transform indexBone;
         public Vector3 palmFromWrist;
         public float modelHandLength;
@@ -157,6 +167,7 @@ public sealed class ArmsVRController : MonoBehaviour
     bool hasRightHint;
     Quaternion bodyRotation;
     XROrigin xrOrigin;
+    PhysicsPlayerRig physicsRig;
     float playerHeight = DefaultHeight;
     float leftArmScale = 1f;
     float rightArmScale = 1f;
@@ -215,6 +226,8 @@ public sealed class ArmsVRController : MonoBehaviour
                 Vector3.Distance(rightHand.parent.position, rightHand.position);
             MeasureHand(leftHand, leftRig);
             MeasureHand(rightHand, rightRig);
+            CaptureFingerChains(leftHand, leftRig);
+            CaptureFingerChains(rightHand, rightRig);
             baselineCaptured = true;
         }
         bodyRotation = transform.rotation;
@@ -236,6 +249,9 @@ public sealed class ArmsVRController : MonoBehaviour
             Debug.LogError("ArmsVR could not initialize its animation graph: " + exception.Message, this);
             UseFallbackHands();
         }
+
+        if (enabled && graph.IsValid())
+            AttachPhysics();
     }
 
     bool BindHandInput(HandRig hand, string side, string usage)
@@ -306,6 +322,57 @@ public sealed class ArmsVRController : MonoBehaviour
             }
         }
         rig.modelHandLength = length;
+    }
+
+    // Records each finger's bones while the hand is still in its open bind pose, for the physics colliders.
+    static void CaptureFingerChains(Transform hand, HandRig rig)
+    {
+        var chain = new List<Transform>(3);
+        for (var group = 0; group < k_FingerGroupCount; group++)
+        {
+            chain.Clear();
+            // Not every finger has every joint; the thumb of this model starts at joint 2.
+            for (var joint = 1; joint <= 3; joint++)
+            {
+                var bone = FindFingerBone(hand, k_FingerGroupBones[group][0], joint);
+                if (bone != null)
+                    chain.Add(bone);
+            }
+
+            rig.fingerBones[group] = chain.ToArray();
+            if (chain.Count == 0)
+                continue;
+
+            var last = chain[chain.Count - 1];
+            var previous = chain.Count > 1 ? chain[chain.Count - 2] : hand;
+            rig.fingerTipLocal[group] = last.InverseTransformVector((last.position - previous.position) * k_FingertipLengthRatio);
+        }
+    }
+
+    // Hands the visual hands over to the physics rig, which makes them collide with the world.
+    void AttachPhysics()
+    {
+        if (xrOrigin == null)
+            return;
+
+        if (!TryGetComponent(out physicsRig))
+            physicsRig = gameObject.AddComponent<PhysicsPlayerRig>();
+        physicsRig.Attach(xrOrigin,
+            CreatePhysicsSetup("Left", leftHand, leftController, leftRig),
+            CreatePhysicsSetup("Right", rightHand, rightController, rightRig));
+    }
+
+    static PhysicsHandSetup CreatePhysicsSetup(string name, Transform hand, Transform controller, HandRig rig)
+    {
+        return new PhysicsHandSetup
+        {
+            name = name,
+            handBone = hand,
+            controller = controller,
+            fingerBones = rig.fingerBones,
+            fingerTipLocal = rig.fingerTipLocal,
+            thumbIndex = k_ThumbGroup,
+        };
     }
 
     static Transform FindFingerBone(Transform hand, string finger, int joint)
@@ -469,11 +536,17 @@ public sealed class ArmsVRController : MonoBehaviour
         rightConstraint.weight = rightConstraintWeight;
         leftTarget.position = SoftenReach(leftShoulder.position, leftHand.parent.position, leftHand.position, leftTarget.position);
         rightTarget.position = SoftenReach(rightShoulder.position, rightHand.parent.position, rightHand.position, rightTarget.position);
+        if (physicsRig != null)
+        {
+            // Physics has the last word: a hand that is blocked by a wall or holds something stays there.
+            physicsRig.ResolveHand(0, leftTarget, hasLeftPose && leftConstraintWeight > 0.5f);
+            physicsRig.ResolveHand(1, rightTarget, hasRightPose && rightConstraintWeight > 0.5f);
+        }
         UpdateElbowHint(leftShoulder, leftHand, leftTarget, leftHint, leftController.parent, -1f, ref leftHintLocal, ref hasLeftHint);
         UpdateElbowHint(rightShoulder, rightHand, rightTarget, rightHint, rightController.parent, 1f, ref rightHintLocal, ref hasRightHint);
 
-        UpdateFingers(leftRig, leftGripClip);
-        UpdateFingers(rightRig, rightGripClip);
+        UpdateFingers(leftRig, leftGripClip, 0);
+        UpdateFingers(rightRig, rightGripClip, 1);
         rigBuilder.SyncLayers();
         graph.Evaluate(Time.deltaTime);
     }
@@ -532,16 +605,22 @@ public sealed class ArmsVRController : MonoBehaviour
         return new Pose(localPosition, localRotation);
     }
 
-    void UpdateFingers(HandRig hand, AnimationClip clip)
+    void UpdateFingers(HandRig hand, AnimationClip clip, int physicsHandIndex)
     {
         var grip = ReadAxis(hand.grip);
         var index = ReadAxis(hand.trigger);
         var blend = SmoothingBlend(fingerSharpness);
         var clipEnd = Math.Max(0d, clip.length - 0.0001d);
-        hand.fingerCurl[0] = Mathf.Lerp(hand.fingerCurl[0], index, blend);
-        hand.fingerCurl[1] = Mathf.Lerp(hand.fingerCurl[1], grip, blend);
         for (var group = 0; group < k_FingerGroupCount; group++)
-            hand.fingerPlayables[group].SetTime(hand.fingerCurl[group] * clipEnd);
+        {
+            var current = hand.fingerCurl[group];
+            var curl = Mathf.Lerp(current, group == k_IndexGroup ? index : grip, blend);
+            // A finger that touches something stops closing there instead of clipping through it.
+            if (physicsRig != null)
+                curl = physicsRig.LimitFingerCurl(physicsHandIndex, group, current, curl);
+            hand.fingerCurl[group] = curl;
+            hand.fingerPlayables[group].SetTime(curl * clipEnd);
+        }
     }
 
     // Evaluates the graph fully closed and fully open once, and reports if the squeeze clip does not move the index finger.
@@ -768,6 +847,10 @@ public sealed class ArmsVRController : MonoBehaviour
 
     void OnDisable()
     {
+        if (physicsRig != null)
+            physicsRig.Detach();
+        physicsRig = null;
+
         foreach (var action in enabledSharedActions)
         {
             if (action != null && action.enabled)

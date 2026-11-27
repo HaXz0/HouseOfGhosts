@@ -36,6 +36,10 @@ public sealed class XRHingedHandle : MonoBehaviour
         }
 
         closedRotation = hinge.localRotation;
+
+        // A collider that moves needs a rigidbody; kinematic lets the door push hands and loose objects out of its way.
+        if (hinge.GetComponentInParent<Rigidbody>() == null)
+            hinge.gameObject.AddComponent<Rigidbody>().isKinematic = true;
     }
 
     void OnEnable()
